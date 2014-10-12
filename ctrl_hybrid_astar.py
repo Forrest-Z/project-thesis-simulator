@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-from utils import *
+from utils import State, Vessel, Map, Scenario, Simulation
 
 class PriorityQueue:
     def __init__(self):
@@ -80,7 +80,7 @@ class SearchGrid(object):
 def heuristic(a, b):
     return a.dist(b) + 0*abs(a.psi-b.psi)
 
-def hybrid_a_star(scenario):
+def hybrid_astar(scenario):
     start = scenario.initial_state
     goal  = scenario.goal_state
     graph = SearchGrid(scenario.map, [start.gridsize, start.gridsize])
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     goal_state  = State(100,100,0)
 
     myscenario   = Scenario(mymap, start_state, goal_state)
-    mysimulation = Simulation(myscenario, hybrid_a_star, myvessel)
+    mysimulation = Simulation(myscenario, hybrid_astar, myvessel)
 
     mysimulation.run_sim()
 

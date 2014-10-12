@@ -1,6 +1,9 @@
 #!/usr/bin/env python
+import time
+
 import numpy as np
 from numpy import linalg as LA
+
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -12,9 +15,12 @@ class Simulation(object):
         self.algorithm = algorithm
         self.vessel = vessel
         self.path = []
+        self.sim_time = 0
 
     def run_sim(self):
+        self.sim_time = time.clock()
         self.path, succes = self.algorithm(self.scenario)
+        self.sim_time = time.clock() - self.sim_time
 
         if succes:
             print "Found path!"
@@ -25,6 +31,9 @@ class Simulation(object):
 
         self.scenario.draw(axes)
         draw_path(axes, self.vessel, self.path, 5)
+
+    def print_sim_time(self):
+        print "Simulation time: %.3f seconds!" % (self.sim_time)
 
 
 class Scenario(object):
@@ -71,7 +80,7 @@ class Map(object):
             line = f.readline().split(" ")
             self._dim[0] = int(line[0])
             self._dim[1] = int(line[1])
-            print self._dim
+
             obstacles = f.readlines()
             self._obstacles = []
 
@@ -81,7 +90,7 @@ class Map(object):
                 tmp = []
                 for ii in range(0,n,2):
                     tmp.append((float(o[ii]), float(o[ii+1])))
-                print tmp
+
                 self._obstacles.append(Polygon(tmp))
 
     def add_obstacles(self, obstacles):
@@ -283,7 +292,7 @@ class Polygon(object):
 def draw_path(axes, vessel, path, spacing,
               pcolor='r', fcolor='b', ecolor='k'):
     n = len(path)
-    print n
+
     x = []
     y = []
     psi = []
