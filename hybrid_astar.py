@@ -7,65 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-NODEWIDTH = 1 # pixels
-DELTA = 3.1415/5
-
-
-
-class State(object):
-    def __init__(self, s = (0,0,0)):
-        self.x   = s[0]  # [m]   Position
-        self.y   = s[1]  # [m]   Position
-        self.psi = s[2]  # [rad] Orientation
-
-        self.grid_id = "(%d,%d)"%(int(self.x) / NODEWIDTH, int(self.y) / NODEWIDTH )
-
-    def __str__(self):
-        return "(%.2f, %.2f, %.2f)"%(self.x, self.y, self.psi)
-
-    def __eq__(self, other):
-        return (isinstance(other, self.__class__) and self.dnorm(other) < 5*NODEWIDTH)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def dnorm(self, s2):
-        return np.sqrt( (s2.x - self.x)**2 + (s2.y - self.y)**2 + (s2.psi - self.psi)**2)
-
-    def dist(self, s2):
-        return np.sqrt( (s2.x - self.x)**2 + (s2.y - self.y)**2 )
-
-    def to_tuple(self):
-        return (int(self.x)/NODEWIDTH, int(self.y)/NODEWIDTH)
-
-    def neighbors(self):
-       p = self.psi
-       d = DELTA
-       x0 = 2.5*NODEWIDTH
-       y0 = 0.0
-       x = self.x
-       y = self.y
-
-       ret = []
-       for dp in [-2, -1, 0, 1, 2]:
-           d = dp * np.pi / 16
-           n = State((x - x0*(np.sin(d)*np.sin(p) - np.cos(d)*np.cos(p)),
-                      y - x0*(np.cos(d)*np.sin(p) + np.cos(p)*np.sin(d)),
-                      p + d))
-           ret.append(n)
-
-
-       # n1 = (x - x0*(np.sin(d)*np.sin(p) - np.cos(d)*np.cos(p)),
-       #       y - x0*(np.cos(d)*np.sin(p) + np.cos(p)*np.sin(d)),
-       #       p + d)
-       # n2 = (x + x0*(np.sin(d)*np.sin(p) + np.cos(d)*np.cos(p)),
-       #       y - x0*(np.cos(d)*np.sin(p) - np.cos(p)*np.sin(d)),
-       #       p - d)
-       # n3 = (x + np.cos(p)*x0,
-       #       y - np.sin(p)*x0,
-       #       p)
-
-       return ret #[State(n1), State(n2), State(n3)]
+from utils import *
 
 class PriorityQueue:
     def __init__(self):
@@ -81,68 +23,74 @@ class PriorityQueue:
         return heapq.heappop(self.elements)[1]
 
 class SearchGrid(object):
-    """ General purpose N-dimentional search grid """
-    def __init__(self, N, res):
-        pass
+    """General purpose N-dimentional search grid."""
+    def __init__(self, the_map, gridsize, N=2):
+        self.N        = N
+        self.grid     = []
+        self.map      = the_map
+        self.gridsize = gridsize
+
+        dim = the_map.get_dimension()
+
+        self.width  = dim[0]
+        self.height = dim[1]
+
+        if N==3:
+            # yaw resolution
+            dim.append( 5.0 / 360.0 )
+
+        # TODO: Is this needed?
+        # for ii in range(0,N):
+        #     print self.grid, dim, gridsize, N, ii
+        #     self.grid[ii].append( [0] * int(dim[ii] / gridsize[ii]) )
 
 
-class SquareGrid:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.walls = []
+
+        #self.walls = []
+        # for obstacle in the_map.get_obstacles():
+        #     V = obstacle.get_vertices()
+        #     n = len(V)
+        #     for ii in range(1,n):
+        #         self.walls.append( (int(V[ii][0]), int(V[ii][1])) )
+
+
+
         self.weights = {}
 
-    def in_bounds(self, s):
-        (x, y) = (int(s.x) / NODEWIDTH, int(s.y) / NODEWIDTH)
+    def in_bounds(self, state):
+        (x,y) = state.grid_xy
         return 0 <= x < self.width and 0 <= y < self.height
 
     def cost(self, a, b):
-        return self.weights.get(b, 1)
+        return self.weights.get(b,1)
 
-    def passable(self, s):
-        point = s.to_tuple()
+    def passable(self, state):
+        # TODO Rename or change? Only returns true if object is _inside_ obstacle
+        if not self.map.is_occupied( (state.x, state.y) ):
+            return True
+        else:
+            return False
+    def neighbors(self, state):
+        results = state.neighbors()
 
-        return point not in self.walls
-
-    def passable2(self, s0, points):
-        ret = []
-        s = s0.to_tuple()
-        for state in points:
-            p = state.to_tuple()
-            if p not in self.walls:
-                for w in self.walls:
-                    crossproduct = (w[1] - s[1]) * (p[0] - s[0]) - (w[0] - s[0]) * (p[1] - s[1])
-                    if abs(crossproduct) > 0.01:
-                        ret.append(state)
-        return ret
-
-
-    def neighbors(self, s):
-        results = s.neighbors()
-
-        # simulate system elns -> return
-
-        # results = [(x+1, y), (x, y-1), (x-1, y), (x, y+1),
-        #            (x+1, y+1), (x+1,y-1), (x-1,y+1), (x-1,y-1)]
-#        if (x + y) % 2 == 0: results.reverse() # aesthetics
         results = filter(self.in_bounds, results)
         results = filter(self.passable, results)
         return results
 
-
-
-
 def heuristic(a, b):
     return a.dist(b) + 0*abs(a.psi-b.psi)
 
-def a_star_search(graph, start, goal):
+def hybrid_a_star(scenario):
+    start = scenario.initial_state
+    goal  = scenario.goal_state
+    graph = SearchGrid(scenario.map, [start.gridsize, start.gridsize])
+
     frontier = PriorityQueue()
     frontier.put(start, 0)
     came_from = {}
     cost_so_far = {}
-    came_from[start.grid_id] = None
-    cost_so_far[start.grid_id] = 0
+    came_from[start.grid_xy] = None
+    cost_so_far[start.grid_xy] = 0
 
     path_found = False
 
@@ -154,20 +102,18 @@ def a_star_search(graph, start, goal):
             break
 
         for next in graph.neighbors(current):
-            new_cost = cost_so_far[current.grid_id] + graph.cost(current, next)
+            new_cost = cost_so_far[current.grid_xy] + graph.cost(current, next)
 
-            if next.grid_id not in cost_so_far or new_cost < cost_so_far[next.grid_id]:
-                cost_so_far[next.grid_id] = new_cost
+            if next.grid_xy not in cost_so_far or new_cost < cost_so_far[next.grid_xy]:
+                cost_so_far[next.grid_xy] = new_cost
                 priority = new_cost + heuristic(goal, next)
                 frontier.put(next, priority)
                 came_from[next] = current
 
-    return came_from, cost_so_far, current, path_found
 
-def check_pygame_events():
-    for e in pygame.event.get():
-        if e.type == QUIT or (e.type == KEYUP and e.key == K_ESCAPE):
-            sys.exit("Leaving because you requested it.")
+    path = reconstruct_path(came_from, start, current)
+
+    return path, path_found
 
 
 def reconstruct_path(came_from, start, goal):
@@ -176,45 +122,25 @@ def reconstruct_path(came_from, start, goal):
     while current != start:
         current = came_from[current]
         path.append(current)
+    path.append(start)
     return path
 
 
 if __name__ == "__main__":
-    mymap = cv2.imread('map.png', cv2.IMREAD_GRAYSCALE)
+    mymap = Map('s1')
+    #mymap.load_map('s1')
 
-    height,width = mymap.shape[:2]
+    myvessel = Vessel('other')
+    start_state = State(0,0,0, gridsize=1)
+    goal_state  = State(100,100,0)
 
-    costmap = SquareGrid(width, height)
+    myscenario   = Scenario(mymap, start_state, goal_state)
+    mysimulation = Simulation(myscenario, hybrid_a_star, myvessel)
 
-    for x in range(0,width):
-        for y in range(0,height):
-            if mymap[x,y] < 10:
-                costmap.walls.append( (x,y) )
-    costmap.weights = {loc: 10 for loc in costmap.walls}
+    mysimulation.run_sim()
 
-    start = State((0,0,0))
-    finish = State((150,150,0))
+    fig, ax = plt.subplots()
+    mysimulation.draw(ax)
+    #mymap.draw(ax, 'g', 'k')
 
-    tic = time.clock()
-    came_from, cost_so_far, last_state, path_found = a_star_search( costmap, start, finish )
-    toc = time.clock()
-
-    print toc-tic
-    print path_found
-
-    path = reconstruct_path(came_from, start, last_state)
-    x = []
-    y = []
-    psi = []
-    for s in path:
-        #print "%.2f,%.2f"%(s.x, s.y)
-        x.append(s.x)
-        y.append(s.y)
-        psi.append(s.psi)
-
-    walls = map(list, zip(*costmap.walls))
-    plt.plot(walls[0],walls[1], 'g.')
-    plt.plot(x,y)
-    plt.plot(finish.x, finish.y, 'ro')
     plt.show()
-
