@@ -4,51 +4,148 @@ import time
 import numpy as np
 from numpy import linalg as LA
 
-
 import matplotlib
 import matplotlib.pyplot as plt
 
+from matplotlib.patches import Circle
+
 
 class Simulation(object):
-    def __init__(self, scenario, algorithm, vessel):
+    def __init__(self, scenario, vessel, controllers, model, tend=None):
         self.scenario = scenario
-        self.algorithm = algorithm
+        self.controllers = controllers
+        self.model = model
         self.vessel = vessel
-        self.path = []
-        self.sim_time = 0
+
+        if tend:
+            self.tend = tend
+        else:
+            self.tend = 100
+
+        self.path = np.empty((int(self.tend / self.model.dT), 6))
+
 
     def run_sim(self):
-        self.sim_time = time.clock()
-        self.path, succes = self.algorithm(self.scenario)
-        self.sim_time = time.clock() - self.sim_time
+        n = 0
 
-        if succes:
-            print "Found path!"
-        else:
-            print "Failed to find path..."
+        for t in np.linspace(0, self.tend, int(self.tend*10)):
+
+            self.path[n] = self.model.update(self.scenario)
+            for ctrl in self.controllers:
+                ctrl.update(self.scenario)
+
+            n += 1
+        # # TODO: This is a general sketch
+        # for it in range(0, num_iter):
+        #     # Typical layout:
+        #     # Global (A*) -> Waypoint tracker (LOS) -> DWA -> ..?
+        #     for ctrl in controllers:
+        #         ctrl.update()
+
 
     def draw(self, axes):
 
+        axes.plot(self.path[:,0], self.path[:,1])
         self.scenario.draw(axes)
-        draw_path(axes, self.vessel, self.path, 5)
+
+        axes.set_aspect('equal')
+
+        n = len(self.path[:])
+        for ii in range(0, n, 50):
+            self.vessel.draw(axes, self.path[ii], 'b', 'k')
+
+        #axes.autoscale_view()
+        #draw_path(axes, self.vessel, self.path, 5)
 
     def print_sim_time(self):
         print "Simulation time: %.3f seconds!" % (self.sim_time)
 
 
+## TODO: CLEAN THIS UP
+d1u = 16.6
+d1v = 9900.0
+d1r = 330.0
+d2u = 8.25
+d2v = 330.0
+d2r = 0.0
+
+m   = 3300.0
+Iz  = 1320.0
+
+lr  = 4.0
+Fxmax = 2310.0
+Fymax = 28.8
+
+Kp_p = 0.1
+Kp_psi = 5.0
+Kd_psi = 1.0
+
+class VesselModel(object):
+    """3DOF nonlinear vessel model"""
+
+    def __init__(self, x0, dT):
+        self.x = np.copy(x0)
+
+        self.dT = dT
+
+    def Cvv(self):
+        return np.array([ self.x[4] * self.x[5],
+                         -self.x[3] * self.x[5],
+                          0                    ])
+    def Dvv(self):
+        return np.array([d2u*self.x[3]*np.abs(self.x[3]) + d1u*self.x[3],
+                         d2v*self.x[4]*np.abs(self.x[4]) + d1v*self.x[4],
+                                                         + d1r*self.x[5]])
+
+    def update(self, world_object):
+        u0 = world_object.Ud
+        psi0 = world_object.Xd
+
+        Rz = np.array([[ np.cos(self.x[2]),-np.sin(self.x[2]), 0],
+                       [ np.sin(self.x[2]), np.cos(self.x[2]), 0],
+                       [ 0                , 0                , 1]])
+
+        Fx = (d1u + d2u*np.abs(self.x[3])) * self.x[3] + m*(self.x[4]*self.x[5] + Kp_p*(u0 - self.x[3]))
+        Fy = Kp_psi*Iz / lr * ((psi0 - self.x[2]) - Kd_psi*self.x[5])
+
+        if Fx > Fxmax:
+            Fx = Fxmax
+        if Fy > Fymax:
+            Fy = Fymax
+
+        tau = np.array([Fx, Fy, lr*Fy])
+
+        self.x[0:3] += self.dT * np.dot(Rz, self.x[3:6])
+        self.x[3:6] += self.dT * np.dot(np.diag([1/m, 1/m, 1/Iz]), tau - self.Cvv() - self.Dvv())
+
+        # TODO: Is this necesarry? I don't think this copies the array, so it could be set in init
+        # and world_object.x would always point to VesselModel.x
+        world_object.x = self.x
+
+        return self.x
+
+
 class Scenario(object):
-    def __init__(self,
-                 the_map,
-                 initial_state,
-                 goal_state):
+    def __init__(self, the_map, initial_state, goal_state, waypoints):
+        if waypoints.any():
+            self.waypoints = waypoints
+
         self.map = the_map
         self.initial_state = initial_state
         self.goal_state = goal_state
+        self.Ud = 0.0
+        self.Xd = 0.0
+        self.x = None
 
     def draw(self, axes, scolor='b', fcolor='r', ocolor='g', ecolor='k'):
         self.map.draw(axes, ocolor, ecolor)
-        axes.plot(self.initial_state.x, self.initial_state.y, scolor.join('o'), markersize=12)
-        axes.plot(self.goal_state.x, self.goal_state.y, fcolor.join('o'), markersize=12)
+        axes.plot(self.initial_state[0], self.initial_state[1], scolor.join('o'), markersize=12)
+        axes.plot(self.goal_state[0], self.goal_state[1], fcolor.join('o'), markersize=12)
+
+        axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--', linewidth=2)
+        for wp in self.waypoints[:]:
+            circle = Circle((wp[0], wp[1]), 10, facecolor='r', alpha=0.4)
+            axes.add_patch(circle)
 
 class Map(object):
     """This class provides a general map."""
@@ -121,14 +218,14 @@ class Map(object):
 
 
 class State(object):
-    def __init__(self, x=0, y=0, psi=0, gridsize=1):
+    def __init__(self, x=0, y=0, psi=0, xyres=1, psires=5.0/360.0):
         self.x   = x   # [m]   Position
         self.y   = y   # [m]   Position
         self.psi = psi # [rad] Orientation
 
         self.gridsize = gridsize
 
-        self.grid_xy = (int(x / gridsize), int(y / gridsize))
+        self.grid_int = (int(x / gridsize), int(y / gridsize), int(psi / psires))
 
 
     def __str__(self):
@@ -172,10 +269,10 @@ class Vessel(object):
             self._scale   = 1.0/20.0
             self._length  = 60.0 * self._scale
             self._breadth = 14.5 * self._scale
-        elif vesseltype == 'other':
+        elif vesseltype == 'viknes':
             self._scale   = 1.0
-            self._length  = 7.5 * self._scale
-            self._breadth = 3.0 * self._scale
+            self._length  = 8.52 * self._scale
+            self._breadth = 2.97 * self._scale
         # Vertices of a polygon.
         self._shape = np.asarray([(-self._length/2, -self._breadth/2),
                                   (-self._length/2,  self._breadth/2),
@@ -184,11 +281,15 @@ class Vessel(object):
                                   ( self._length/3, -self._breadth/2)])
 
     def draw(self, axes, state, fcolor, ecolor):
-        Rz = np.array([[ np.cos(state.psi),-np.sin(state.psi)],
-                       [ np.sin(state.psi), np.cos(state.psi)]])
+        x   = state[0]
+        y   = state[1]
+        psi = state[2]
 
-        shape = np.dot(Rz.transpose(), self._shape.transpose()).transpose()
-        shape = np.add(shape, (state.x, state.y))
+        Rz = np.array([[ np.cos(psi),-np.sin(psi)],
+                       [ np.sin(psi), np.cos(psi)]])
+
+        shape = np.dot(Rz, self._shape.transpose()).transpose()
+        shape = np.add(shape, (x, y))
 
         poly = matplotlib.patches.Polygon(shape, facecolor=fcolor, edgecolor=ecolor)
         axes.add_patch(poly)
@@ -289,6 +390,7 @@ class Polygon(object):
             axes.add_patch(poly_safe)
 
 
+# TODO: Remove. Not in use.
 def draw_path(axes, vessel, path, spacing,
               pcolor='r', fcolor='b', ecolor='k'):
     n = len(path)
@@ -310,25 +412,15 @@ def draw_path(axes, vessel, path, spacing,
 
 if __name__ == "__main__":
 
-    # myPoly = Polygon([(1., 1.), (2., 1), (2., 2)])
+    myscenario = Scenario(Map(), np.empty(3), np.asarray([100, 100, np.pi/4]))
+    mymodel    = VesselModel(np.empty(6), 0.05)
 
-    # newPoly = myPoly.extrude(0.1)
 
-    # fig, ax = plt.subplots()
-    # myPoly.draw(ax, fcolor='b', ecolor='k')
-    # newPoly.draw(ax, fcolor='none', ecolor='r')
-    # ax.axis([0,3, 0,3])
-    # plt.show()
+    mysim = Simulation(myscenario, [], mymodel, 20)
+    mysim.run_sim()
 
-    # mypath = []
-    # for ii in range(0,20):
-    #     mypath.append(State(ii, ii*3, ii/20))
-
-    mymap = Map('s1')
-    # myvessel = Vessel()
     fig, ax = plt.subplots()
-    mymap.draw(ax, 'g', 'k')
-    # draw_path(ax, myvessel, mypath, 3)
+    mysim.draw(ax)
     plt.show()
-
+    print "OK!"
 
