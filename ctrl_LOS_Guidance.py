@@ -3,44 +3,31 @@ import numpy as np
 
 class LOSGuidance(object):
     """This class implements  """
-    def __init__(self, scenario):
+    def __init__(self):
         self.R2 = 5.0**2 # Radii of acceptance
         self.de = 10 # TODO: determine Lookahead distance
 
-        self.cWP = 0 # Current waypoint
+        self.cWP = 0 # Current waypoin
 
-        if not scenario.waypoints.any():
-            self.wp_initialized = False
-        else:
-            self.wp = scenario.waypoints
-            self.nWP = len(self.wp[:,0])
-
-            if self.nWP < 2:
-                print "Error! There must be more than 2 waypoints in the list!"
-                self.wp_initialized = False
-            else:
-                self.wp_initialized = True
-                self.Xp = np.arctan2(self.wp[self.cWP + 1][1] - self.wp[self.cWP][1],
-                                     self.wp[self.cWP + 1][0] - self.wp[self.cWP][0])
+        self.wp_initialized = False
 
 
-
-    def update(self, world_object):
+    def update(self, vessel_object):
         if not self.wp_initialized:
-            if world_object.waypoints.any():
-                self.wp = world_object.waypoints
+            if vessel_object.waypoints.any():
+                self.wp = vessel_object.waypoints
                 self.nWP = len(self.wp[:,0])
 
                 if self.nWP < 2:
-                    print "Error! There must be more than 2 waypoints in the list!"
+                    print "Error! There must be more than 1 waypoint in the list!"
                     self.wp_initialized = False
                 else:
                     self.wp_initialized = True
                     self.Xp = np.arctan2(self.wp[self.cWP + 1][1] - self.wp[self.cWP][1],
                                          self.wp[self.cWP + 1][0] - self.wp[self.cWP][0])
 
-        x = world_object.x[0]
-        y = world_object.x[1]
+        x = vessel_object.x[0]
+        y = vessel_object.x[1]
 
         if (x - self.wp[self.cWP+1][0])**2 + (y - self.wp[self.cWP+1][1])**2 < self.R2:
             if self.cWP < self.nWP - 2:
@@ -74,5 +61,5 @@ class LOSGuidance(object):
         Xr = np.arctan2( -e, self.de)
         Xd = self.Xp + Xr
 
-        world_object.Xd = Xd
-        world_object.Ud = 3.0
+        vessel_object.Xd = Xd
+        vessel_object.Ud = 3.0

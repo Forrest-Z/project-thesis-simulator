@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-from utils import State, Vessel, Map, Scenario, Simulation
+#from utils import State, Vessel, Map, Scenario, Simulation
 
 def Rz(theta):
     return np.array([[np.cos(theta), -np.sin(theta), 0],
@@ -97,20 +97,24 @@ class SearchGrid(object):
         return results
 
 class HybridAStar(object):
-    def __init__(self, scenario):
-        self.start = np.copy(scenario.initial_state[0:3])
-        self.goal  = np.copy(scenario.goal_state)
+    def __init__(self, x0, xg, the_map):
+        self.start = x0[0:3]
+        self.goal  = xg[0:3]
 
-        self.graph = SearchGrid(scenario.map, [5.0, 5.0, 15.0/360.0], N=3)
+        self.graph = SearchGrid(the_map, [5.0, 5.0, 15.0/360.0], N=3)
 
+        self.map = the_map
         self.eps = 10.0
         self.to_be_updated = True
         self.path_found = False
 
-    def update(self, scenario):
+    def update(self, vessel_object):
         if self.to_be_updated:
+
+            vessel_object.waypoints = self.search()
+
             self.to_be_updated = False
-            scenario.waypoints = self.search()
+            self.map.disable_safety_region()
 
 
     def search(self):
