@@ -11,53 +11,83 @@ from matplotlib.patches import Circle
 
 
 class Simulation(object):
-    def __init__(self, scenario, vessel, controllers, model, tend=None):
+    """This class combines the different classes needed to simulate a scenario.
+
+    Args:
+        scenario   (class): a Scenario object (contains map, etc.)
+        vessel     (class): the vessel to be used (e.g. the Viknes 830)
+        controllers (list): list of controller types (A*, LOS, etc.)
+        model      (class): the mathematical model for the vessel
+                                :todo: make vessel the parent for this class
+
+    Kwargs:
+        tend       (float): The end time of the simulation (default 100)
+
+    """
+    def __init__(self, scenario, vessel, controllers, model, tend=100):
+        """Initializes the simulation."""
         self.scenario = scenario
         self.controllers = controllers
         self.model = model
         self.vessel = vessel
+        self.tend = tend
+        self.path = np.zeros((int(self.tend / self.model.dT), 6))
+        self.n = 0
+        self.N = int(self.tend/ self.model.dT)
 
-        if tend:
-            self.tend = tend
-        else:
-            self.tend = 100
-
-        self.path = np.empty((int(self.tend / self.model.dT), 6))
-
+        self._end_reason = "SimOK"
 
     def run_sim(self):
-        n = 0
+        """Runs the simulation."""
 
-        for t in np.linspace(0, self.tend, int(self.tend*10)):
+        print "Starting simulation"
+        for t in np.linspace(0, self.tend, self.N):
+            """The actual simulation"""
+            tic = time.clock()
 
-            self.path[n] = self.model.update(self.scenario)
+            self.path[self.n] = np.copy(self.model.update(self.scenario))
+
+            if self.scenario.is_occupied(self.path[self.n,0:2]):
+                self._end_reason = "Collision"
+                print "We crashed! :O"
+                break
+
             for ctrl in self.controllers:
                 ctrl.update(self.scenario)
 
-            n += 1
-        # # TODO: This is a general sketch
-        # for it in range(0, num_iter):
-        #     # Typical layout:
-        #     # Global (A*) -> Waypoint tracker (LOS) -> DWA -> ..?
-        #     for ctrl in controllers:
-        #         ctrl.update()
+            toc = time.clock()
 
+            if self.n == 0:
+                print self.n
+                print "CPU time used: %f" % (toc - tic)
+            self.n += 1
 
     def draw(self, axes):
+        """Draw the simulation.
 
-        axes.plot(self.path[:,0], self.path[:,1])
+        Plots the result of the simulation.
+
+        Args:
+            axes (class): the matplotlib axes to draw to.
+        """
+        axes.plot(self.path[:self.n,0], self.path[:self.n,1])
         self.scenario.draw(axes)
 
         axes.set_aspect('equal')
 
-        n = len(self.path[:])
-        for ii in range(0, n, 50):
+        for ii in range(0, self.n, 50):
             self.vessel.draw(axes, self.path[ii], 'b', 'k')
 
-        #axes.autoscale_view()
-        #draw_path(axes, self.vessel, self.path, 5)
+        if self._end_reason == "Collision":
+            # Draw some nice explosion
+            axes.plot(self.path[self.n,0], self.path[self.n,1], 'rx', markersize=12, mew=4)
+
 
     def print_sim_time(self):
+        """Prints the time taken to simulate the scenario.
+
+        :todo: implement
+        """
         print "Simulation time: %.3f seconds!" % (self.sim_time)
 
 
@@ -108,10 +138,10 @@ class VesselModel(object):
         Fx = (d1u + d2u*np.abs(self.x[3])) * self.x[3] + m*(self.x[4]*self.x[5] + Kp_p*(u0 - self.x[3]))
         Fy = Kp_psi*Iz / lr * ((psi0 - self.x[2]) - Kd_psi*self.x[5])
 
-        if Fx > Fxmax:
-            Fx = Fxmax
-        if Fy > Fymax:
-            Fy = Fymax
+        if np.abs(Fx) > Fxmax:
+            Fx = np.sign(Fx)*Fxmax
+        if np.abs(Fy) > Fymax:
+            Fy = np.sign(Fy)*Fymax
 
         tau = np.array([Fx, Fy, lr*Fy])
 
@@ -126,9 +156,9 @@ class VesselModel(object):
 
 
 class Scenario(object):
-    def __init__(self, the_map, initial_state, goal_state, waypoints):
-        if waypoints.any():
-            self.waypoints = waypoints
+    def __init__(self, the_map, initial_state, goal_state):
+
+        self.waypoints = np.zeros((1,2))
 
         self.map = the_map
         self.initial_state = initial_state
@@ -137,15 +167,18 @@ class Scenario(object):
         self.Xd = 0.0
         self.x = None
 
+    def is_occupied(self, point):
+        return self.map.is_occupied(point)
+
     def draw(self, axes, scolor='b', fcolor='r', ocolor='g', ecolor='k'):
         self.map.draw(axes, ocolor, ecolor)
-        axes.plot(self.initial_state[0], self.initial_state[1], scolor.join('o'), markersize=12)
-        axes.plot(self.goal_state[0], self.goal_state[1], fcolor.join('o'), markersize=12)
+        axes.plot(self.initial_state[0], self.initial_state[1], scolor.join('o'), markersize=10)
+        axes.plot(self.goal_state[0], self.goal_state[1], fcolor.join('o'), markersize=10)
 
         axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--', linewidth=2)
-        for wp in self.waypoints[:]:
-            circle = Circle((wp[0], wp[1]), 10, facecolor='r', alpha=0.4)
-            axes.add_patch(circle)
+        # for wp in self.waypoints[:]:
+        #     circle = Circle((wp[0], wp[1]), 5, facecolor='r', alpha=0.3, edgecolor='k')
+        #     axes.add_patch(circle)
 
 class Map(object):
     """This class provides a general map."""
@@ -209,11 +242,20 @@ class Map(object):
                 return True
         return False
 
+    def get_obstacle_edge_samples(self, d):
+        points = []
+        for o in self._obstacles:
+            points += o.get_edge_points(d)
+        return points
+
     def draw(self, axes, pcolor, ecolor):
         """Draws the map in the given matplotlib axes."""
         for poly in self._obstacles:
             poly.draw(axes, pcolor, ecolor)
-        axes.axis([0, self._dim[0], 0, self._dim[1]])
+        axes.axis([-10, self._dim[0], -10, self._dim[1]])
+        axes.set_xlabel('x [m]')
+        axes.set_ylabel('y [m]')
+
 
 
 
@@ -297,12 +339,14 @@ class Vessel(object):
 class Polygon(object):
     """Generalized polygon class."""
 
-    def __init__(self, vertices, safety_region=3.):
+    def __init__(self, vertices, safety_region_length=1.5):
         """Initialize polygon with list of vertices."""
-        self._V = np.asarray(vertices)
+        self._V = np.array(vertices)
 
-        if safety_region:
-            self._V_safe = self.extrude(safety_region)
+        self._safety_region = False
+
+        if safety_region_length > 1.0:
+            self._V_safe = self.extrude(safety_region_length)
             self._safety_region = True
 
     def __str__(self):
@@ -325,7 +369,7 @@ class Polygon(object):
         n = len(vertices)
         inside = False
 
-        p1x,p1y = self._V[0]
+        p1x,p1y = vertices[0]
         for i in range(n+1):
             p2x,p2y = vertices[i % n]
             if y > min(p1y,p2y):
@@ -336,6 +380,13 @@ class Polygon(object):
                         if p1x == p2x or x <= xinters:
                             inside = not inside
             p1x,p1y = p2x,p2y
+
+        #if inside:
+            #print point, self._safety_region
+            #fig, ax = plt.subplots()
+            #self.draw(ax, 'r', 'k')
+            #ax.plot(x,y, 'bx', ms=12, mew=4)
+            #ax.autoscale_view()
 
         return inside
 
@@ -368,7 +419,7 @@ class Polygon(object):
 
         vectors[n-1] = a + b
         angles[n-1]  = np.dot(a.transpose(), b)
-        new_polygon = np.empty([n,2])
+        new_polygon = np.zeros([n,2])
 
         for ii in range(0,n):
             new_polygon[ii] = self._V[ii] - \
@@ -380,6 +431,19 @@ class Polygon(object):
         return new_polygon
 
 
+    def get_edge_points(self, d):
+        """Returns list of points along the edges of the polygon."""
+        n = len(self._V)
+
+        linesample = np.transpose(np.array([np.linspace(self._V[n-1][0], self._V[0][0], d),
+                                            np.linspace(self._V[n-1][1], self._V[0][1], d)]))
+        points = linesample.tolist()
+        for ii in range(0,n-1):
+            linesample = np.transpose(np.array([np.linspace(self._V[ii][0], self._V[ii+1][0], d),
+                                                np.linspace(self._V[ii][1], self._V[ii+1][1], d)]))
+            points += linesample.tolist()
+
+        return points
 
     def draw(self, axes, fcolor, ecolor):
         """Plots the polygon with the given plotter."""
@@ -412,15 +476,26 @@ def draw_path(axes, vessel, path, spacing,
 
 if __name__ == "__main__":
 
-    myscenario = Scenario(Map(), np.empty(3), np.asarray([100, 100, np.pi/4]))
-    mymodel    = VesselModel(np.empty(6), 0.05)
+    # myscenario = Scenario(Map(), np.empty(3), np.asarray([100, 100, np.pi/4]))
+    # mymodel    = VesselModel(np.empty(6), 0.05)
 
 
-    mysim = Simulation(myscenario, [], mymodel, 20)
-    mysim.run_sim()
+    # mysim = Simulation(myscenario, [], mymodel, 20)
+    # mysim.run_sim()
 
-    fig, ax = plt.subplots()
-    mysim.draw(ax)
-    plt.show()
-    print "OK!"
+    # fig, ax = plt.subplots()
+    # mysim.draw(ax)
+    # plt.show()
+
+    # x0 = np.array([0,0,0,3.0,0,0])
+    # dT = 0.1
+    # mymodel = VesselModel(x0, dT)
+    # sc = Scenario(Map(), x0, np.zeros(3))
+    # sc.Xd = -0*np.pi/180.0
+    # tend = 2
+    # for t in np.linspace(0, tend, int(tend/dT)):
+    #     x = mymodel.update(sc)
+
+    # print x[0:3]
+    pass
 

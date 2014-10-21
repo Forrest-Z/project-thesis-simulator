@@ -9,6 +9,11 @@ import matplotlib.pyplot as plt
 
 from utils import State, Vessel, Map, Scenario, Simulation
 
+def Rz(theta):
+    return np.array([[np.cos(theta), -np.sin(theta), 0],
+                     [np.sin(theta),  np.cos(theta), 0],
+                     [0            ,  0            , 1]])
+
 class PriorityQueue:
     def __init__(self):
         self.elements = []
@@ -35,10 +40,6 @@ class SearchGrid(object):
         self.width  = dim[0]
         self.height = dim[1]
 
-        if N==3:
-            # yaw resolution
-            dim.append( 5.0 / 360.0 )
-
         # TODO: Is this needed?
         # for ii in range(0,N):
         #     print self.grid, dim, gridsize, N, ii
@@ -56,91 +57,168 @@ class SearchGrid(object):
 
 
         self.weights = {}
+    def get_grid_id(self, state):
+        """Returns a tuple (x,y,psi) with grid positions."""
+        return (int(state[0]/self.gridsize[0]),
+                int(state[1]/self.gridsize[1]),
+                int(state[2]/self.gridsize[2]))
 
     def in_bounds(self, state):
-        (x,y) = state.grid_xy
-        return 0 <= x < self.width and 0 <= y < self.height
+        return 0 <= state[0] < self.width and 0 <= state[1] < self.height
 
     def cost(self, a, b):
-        return self.weights.get(b,1)
+        return self.weights.get((b[0], b[1]),1)
 
     def passable(self, state):
         # TODO Rename or change? Only returns true if object is _inside_ obstacle
-        if not self.map.is_occupied( (state.x, state.y) ):
+        # Polygons add safety zone by default now.
+        if not self.map.is_occupied(state[0:2]):
             return True
         else:
             return False
-    def neighbors(self, state):
-        results = state.neighbors()
 
-        results = filter(self.in_bounds, results)
+    def neighbors(self, state):
+        """
+        Applies rudder commands to find the neighbors of the given state.
+
+        For the Viknes 830, the maximum rudder deflection is 15 deg.
+        """
+        trajectories = np.array([[ 5.45327685, -0.43705761, -0.16338934],
+                                 [ 5.46279187,  0.        ,  0.        ],
+                                 [ 5.45327685,  0.43705761,  0.16338934]])
+
+        results = []
+        for traj in trajectories:
+            newpoint = state + np.dot(Rz(state[2]), traj)
+            results.append(newpoint)
+
+        #results = filter(self.in_bounds, results)
         results = filter(self.passable, results)
         return results
 
+class HybridAStar(object):
+    def __init__(self, scenario):
+        self.start = np.copy(scenario.initial_state[0:3])
+        self.goal  = np.copy(scenario.goal_state)
+
+        self.graph = SearchGrid(scenario.map, [5.0, 5.0, 15.0/360.0], N=3)
+
+        self.eps = 10.0
+        self.to_be_updated = True
+        self.path_found = False
+
+    def update(self, scenario):
+        if self.to_be_updated:
+            self.to_be_updated = False
+            scenario.waypoints = self.search()
+
+
+    def search(self):
+        """The Hybrid State A* search algorithm."""
+
+        # To clean up a bit
+        get_grid_id = self.graph.get_grid_id
+
+        frontier = PriorityQueue()
+        frontier.put(self.start, 0)
+        came_from = {}
+        cost_so_far = {}
+
+        came_from[tuple(self.start)] = None
+        cost_so_far[get_grid_id(self.start)] = 0
+
+        path_found = False
+
+        while not frontier.empty():
+            current = frontier.get()
+
+            if np.linalg.norm(current[0:2] - self.goal[0:2]) < self.eps \
+               and np.abs(current[2]-self.goal[2]) < np.pi/8:
+                self.path_found = True
+                break
+
+            for next in self.graph.neighbors(current):
+                new_cost = cost_so_far[get_grid_id(current)] + \
+                           self.graph.cost(current, next)
+
+                if get_grid_id(next) not in cost_so_far or new_cost < cost_so_far[get_grid_id(next)]:
+                    cost_so_far[get_grid_id(next)] = new_cost
+                    priority = new_cost + heuristic(self.goal, next)
+                    frontier.put(next, priority)
+                    came_from[tuple(next)] = current
+
+
+        # Reconstruct path
+        path = [current]
+        while tuple(current) != tuple(self.start):
+            current = came_from[tuple(current)]
+            path.append(current)
+        print self.path_found
+        return np.copy(np.asarray(path[::-1]))
+
 def heuristic(a, b):
-    return a.dist(b) + 0*abs(a.psi-b.psi)
+    """The search heuristics function."""
+    return np.linalg.norm(a-b)
 
-def hybrid_astar(scenario):
-    start = scenario.initial_state
-    goal  = scenario.goal_state
-    graph = SearchGrid(scenario.map, [start.gridsize, start.gridsize])
+# def hybrid_astar(scenario):
 
-    frontier = PriorityQueue()
-    frontier.put(start, 0)
-    came_from = {}
-    cost_so_far = {}
-    came_from[start.grid_xy] = None
-    cost_so_far[start.grid_xy] = 0
+#     frontier = PriorityQueue()
+#     frontier.put(self.start, 0)
+#     came_from = {}
+#     cost_so_far = {}
+#     came_from[start.grid_xy] = None
+#     cost_so_far[start.grid_xy] = 0
 
-    path_found = False
+#     path_found = False
 
-    while not frontier.empty():
-        current = frontier.get()
+#     while not frontier.empty():
+#         current = frontier.get()
 
-        if current == goal:
-            path_found = True
-            break
+#         if current == goal:
+#             path_found = True
+#             break
 
-        for next in graph.neighbors(current):
-            new_cost = cost_so_far[current.grid_xy] + graph.cost(current, next)
+#         for next in graph.neighbors(current):
+#             new_cost = cost_so_far[current.grid_xy] + graph.cost(current, next)
 
-            if next.grid_xy not in cost_so_far or new_cost < cost_so_far[next.grid_xy]:
-                cost_so_far[next.grid_xy] = new_cost
-                priority = new_cost + heuristic(goal, next)
-                frontier.put(next, priority)
-                came_from[next] = current
+#             if next.grid_xy not in cost_so_far or new_cost < cost_so_far[next.grid_xy]:
+#                 cost_so_far[next.grid_xy] = new_cost
+#                 priority = new_cost + heuristic(goal, next)
+#                 frontier.put(next, priority)
+#                 came_from[next] = current
 
 
-    path = reconstruct_path(came_from, start, current)
+#     path = reconstruct_path(came_from, start, current)
 
-    return path, path_found
+#     return path, path_found
 
 
-def reconstruct_path(came_from, start, goal):
-    current = goal
-    path = [current]
-    while current != start:
-        current = came_from[current]
-        path.append(current)
-    path.append(start)
-    return path
 
 
 if __name__ == "__main__":
     mymap = Map('s1')
     #mymap.load_map('s1')
 
-    myvessel = Vessel('other')
-    start_state = State(0,0,0, gridsize=1)
-    goal_state  = State(100,100,0)
+    myvessel = Vessel('viknes')
 
-    myscenario   = Scenario(mymap, start_state, goal_state)
-    mysimulation = Simulation(myscenario, hybrid_astar, myvessel)
+    x0 = np.array([0, 0, 0, 3.0, 0, 0])
+    xg = np.array([100, 100, np.pi/4])
 
-    mysimulation.run_sim()
+    myscenario   = Scenario(mymap, x0, xg)
+    myastar = HybridAStar(myscenario)
 
+    myastar.update(myscenario)
+
+    print "ok"
     fig, ax = plt.subplots()
-    mysimulation.draw(ax)
-    #mymap.draw(ax, 'g', 'k')
+    ax.plot(myscenario.waypoints[:,0],
+            myscenario.waypoints[:,1],
+            '.')
+
+    ax.plot(x0[0], x0[1], 'bo')
+    ax.plot(xg[0], xg[1], 'ro')
+
+    ax.axis([-10, 160, -10, 160], 'equal')
+    mymap.draw(ax, 'g', 'k')
 
     plt.show()
