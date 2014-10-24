@@ -48,6 +48,7 @@ class LOSGuidance(object):
                                                                   self.wp[self.cWP][0],
                                                                   self.wp[self.cWP][1])
                     print "Last Waypoint reached!"
+                    vessel_object.Ud = 0.0
                     self.R2 = np.Inf
                 return
 

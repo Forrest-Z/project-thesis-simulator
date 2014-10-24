@@ -6,6 +6,7 @@ from numpy import linalg as LA
 
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 from matplotlib.patches import Circle
 
@@ -79,6 +80,9 @@ class Simulation(object):
         #    axes.plot(self.path[self.n,0], self.path[self.n,1], 'rx', markersize=12, mew=4)
 
 
+    def animate(self, fig, axes):
+        return self.scenario.animate(fig, axes, self.n)
+
     def print_sim_time(self):
         """Prints the time taken to simulate the scenario.
 
@@ -104,9 +108,9 @@ class Scenario(object):
             myLOS1 = LOSGuidance()
             myAstar = HybridAStar(x01, xg1, the_map)
 
-            v1 = Vessel(x01, xg1, self.dT, self.N, [myAstar, myLOS1], is_main_vessel=True, vesseltype='viknes')
-            v1.waypoints = np.array([[0, 0], [140, 0], [120, 120], [100, 100]])
-
+            v1 = Vessel(x01, xg1, self.dT, self.N, [myLOS1], is_main_vessel=True, vesseltype='viknes')
+            v1.waypoints = np.array([[0, 0], [50, 60], [70, 60], [100, 40], [100, 100]])
+            #v1.waypoints = np.array([[0, 0], [140, 0], [120, 120]])
 
             # Vessel 2
             x02 = np.array([0, 120, 0, 3.0, 0, 0])
@@ -116,6 +120,34 @@ class Scenario(object):
 
             v2 = Vessel(x02, xg2, self.dT, self.N, [myLOS2], is_main_vessel=False, vesseltype='viknes')
             v2.waypoints = np.array([[0, 120], [120, 120], [140, 0]])
+
+            self.world = World([v1, v2], the_map)
+        if name == 'collision':
+            the_map = Map('s1')
+
+            self.tend = 100
+            self.dT   = 0.1
+            self.N = int(self.tend / self.dT)
+
+            # Vessel 1 (Main vessel)
+            x01 = np.array([0, 0, 0, 3.0, 0, 0])
+            xg1 = np.array([100, 100, np.pi/4])
+
+            myLOS1 = LOSGuidance()
+            myAstar = HybridAStar(x01, xg1, the_map)
+
+            v1 = Vessel(x01, xg1, self.dT, self.N, [myLOS1], is_main_vessel=True, vesseltype='viknes')
+            v1.waypoints = np.array([[0, 0], [50, 60], [70, 60], [120, 20], [120, 120]])
+            #v1.waypoints = np.array([[0, 0], [140, 0], [120, 120]])
+
+            # Vessel 2
+            x02 = np.array([0, 120, 0, 3.0, 0, 0])
+            xg2 = np.array([140, 0, 0])
+
+            myLOS2 = LOSGuidance()
+
+            v2 = Vessel(x02, xg2, self.dT, self.N, [myLOS2], is_main_vessel=False, vesseltype='viknes')
+            v2.waypoints = np.array([[0, 120], [120, 120], [120, 0]])
 
             self.world = World([v1, v2], the_map)
 
@@ -128,12 +160,11 @@ class Scenario(object):
         # axes.plot(self.initial_state[0], self.initial_state[1], scolor.join('o'), markersize=10)
         # axes.plot(self.goal_state[0], self.goal_state[1], fcolor.join('o'), markersize=10)
 
-        # axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--', linewidth=2)
-        # for wp in self.waypoints[:]:
-        #     circle = Circle((wp[0], wp[1]), 5, facecolor='r', alpha=0.3, edgecolor='k')
-        #     axes.add_patch(circle)
 
         self.world.draw(axes, n)
+
+    def animate(self, fig, axes, n):
+        return self.world.animate(fig, axes, n)
 
 class World(object):
     def __init__(self, vessels, the_map):
@@ -172,10 +203,24 @@ class World(object):
     def draw(self, axes, n):
         self._map.draw(axes)
         for v in self._vessels:
-            v.draw_path(axes, n)
+            v.draw(axes, n)
 
         if self._is_collided:
             self._vessels[0].draw_collision(axes, n)
+
+        #for ii in range(0, n, 50):
+        #    for vv in range(0, len(self._vessels)):
+        #        self._vessels[vv].draw(axes, self._vessels[vv].path[ii])
+
+    def animate(self, fig, ax, n):
+        #return self._vessels[0].animate(fig, ax, n)
+        self._map.draw(ax)
+        ret = []
+        for vessel in self._vessels:
+            ret.append(vessel.animate(fig, ax, n, self._is_collided))
+        return ret
+
+
 
 class Vessel(object):
     """General vessel class."""
@@ -210,31 +255,56 @@ class Vessel(object):
                                   ( self._length/2,  0              ),
                                   ( self._length/3, -self._breadth/2)])
 
+    def get_shape(self):
+        return np.copy(self._shape)
+
     def update_model(self, n):
         self.path[n] = self.model.update(self.Ud, self.Xd)
 
     def update_controllers(self):
+        """Updates all the vessels controllers."""
         for ctrl in self.controllers:
             ctrl.update(self)
 
     def draw_collision(self, axes, n):
+        """Draws a red X at the point of collision."""
         axes.plot(self.path[n,0], self.path[n,1], 'rx', ms=12, mew=4)
 
-    def draw_path(self, axes, n, fcolor='y', ecolor='k'):
 
+    def draw(self, axes, n, fcolor='y', ecolor='k'):
+        """Draws the path of a Vessel to the given axes"""
         lcolor = 'r'
+        wpcolor= 'y'
         if self.is_main_vessel:
             fcolor = 'b'
             lcolor = 'b'
+            wpcolor= 'b'
 
+        self.draw_path(axes, n, lcolor, fcolor)
+        self.draw_waypoints(axes, n, wpcolor)
+
+    def draw_path(self, axes, n, lcolor='r', fcolor='y', ecolor='k'):
+        """Draws vessel path with patches."""
         axes.plot(self.path[:n,0], self.path[:n,1], linestyle='dashed', color=lcolor)
-        axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--')
 
         for ii in range(0, n, 50):
-            self.draw(axes, self.path[ii], fcolor, ecolor)
+            self.draw_patch(axes, self.path[ii], fcolor, ecolor)
 
+    def draw_waypoints(self, axes, n, wpcolor):
+        """Draws waypoints"""
 
-    def draw(self, axes, state, fcolor='y', ecolor='k'):
+        axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--')
+
+        axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--', linewidth=2)
+        ii=1
+        for wp in self.waypoints[:]:
+            circle = Circle((wp[0], wp[1]), 5, facecolor=wpcolor, alpha=0.3, edgecolor='k')
+            axes.add_patch(circle)
+            axes.annotate(str(ii), xy=(wp[0], wp[1]), xytext=(wp[0]+5, wp[1]-5))
+            ii += 1
+
+    def draw_patch(self, axes, state, fcolor='y', ecolor='k'):
+        """Draws the Vessel as a  matplotlib.patches.Polygon to the gives axes."""
         x   = state[0]
         y   = state[1]
         psi = state[2]
@@ -248,67 +318,154 @@ class Vessel(object):
         poly = matplotlib.patches.Polygon(shape, facecolor=fcolor, edgecolor=ecolor)
         axes.add_patch(poly)
 
+    def animate(self, fig, ax, n, has_collided=False):
+        """Animate the path."""
+
+        draw_explosion = has_collided and self.is_main_vessel
+
+
+        if self.is_main_vessel:
+            theface = 'b'
+        else:
+            theface = 'y'
+
+        self.draw_waypoints(ax, n, theface)
+
+        patch = plt.Polygon(self._shape,
+                            fc=theface,
+                            ec='k',
+                            animated=False)
+
+        explosion = plt.Circle(self.path[n-1][0:2], 5, fc='r', ec='none')
+        # plt.xlim(-10, 160)
+        # plt.ylim(-10, 160)
+        #ax.xlabel('x [m]')
+        #ax.title('Animation test')
+        #ax = plt.axes(xlim=(-10,160), ylim=(-10,160))
+
+        def init():
+
+            ax.add_patch(patch)
+
+            if draw_explosion:
+                ax.add_patch(explosion)
+                explosion.set_visible(False)
+                return patch, explosion
+
+            return patch,
+
+
+        data = self.path[0:n,0:3]
+        bshape = patch.get_xy().transpose()
+
+        def update_patch(num):
+            if num == 0:
+                explosion.set_visible(False)
+
+            if num < n:
+                xy = data[num,0:2]
+                psi = data[num,2]
+
+                Rz = np.array([[ np.cos(psi),-np.sin(psi)],
+                               [ np.sin(psi), np.cos(psi)]])
+
+                shape = np.dot(Rz, bshape).transpose()
+                shape += xy
+
+                patch.set_xy(shape)
+
+            if draw_explosion and num >= n:
+                explosion.set_visible(True)
+                return patch, explosion
+
+            return patch,
+
+
+        #x   = self.path[:n,0]
+        #y   = self.path[:n,1]
+        #psi = self.path[:n,2]
+
+        ani = animation.FuncAnimation(fig, update_patch, range(0,n+50,10),
+                                      init_func=init,
+                                      interval=50,
+                                      blit=False)
+        return ani
+        #plt.show()
+
 
 ## TODO: CLEAN THIS UP
-d1u = 16.6
-d1v = 9900.0
-d1r = 330.0
-d2u = 8.25
-d2v = 330.0
-d2r = 0.0
+# d1u = 16.6
+# d1v = 9900.0
+# d1r = 330.0
+# d2u = 8.25
+# d2v = 330.0
+# d2r = 0.0
 
-m   = 3300.0
-Iz  = 1320.0
+# m   = 3300.0
+# Iz  = 1320.0
 
-lr  = 4.0
-Fxmax = 2310.0
-Fymax = 28.8
+# lr  = 4.0
 
-Kp_p = 0.1
-Kp_psi = 5.0
-Kd_psi = 1.0
 
 class VesselModel(object):
     """3DOF nonlinear vessel model"""
 
-    def __init__(self, x0, dT):
+    def __init__(self, x0, dT, vessel_model='viknes'):
         self.x = np.copy(x0)
-
         self.dT = dT
+
+        if vessel_model == 'viknes':
+            # Set model parameters
+            self.d1u = 16.6
+            self.d1v = 9900.0
+            self.d1r = 330.0
+            self.d2u = 8.25
+            self.d2v = 330.0
+            self.d2r = 0.0
+
+            self.m   = 3300.0
+            self.Iz  = 1320.0
+
+            self.lr  = 4.0
+            self.Fxmax = 2310.0
+            self.Fymax = 28.8
+
+            self.Kp_p = 0.1
+            self.Kp_psi = 5.0
+            self.Kd_psi = 1.0
+
+#        self.
 
     def Cvv(self):
         return np.array([ self.x[4] * self.x[5],
                          -self.x[3] * self.x[5],
                           0                    ])
     def Dvv(self):
-        return np.array([d2u*self.x[3]*np.abs(self.x[3]) + d1u*self.x[3],
-                         d2v*self.x[4]*np.abs(self.x[4]) + d1v*self.x[4],
-                                                         + d1r*self.x[5]])
+        return np.array([self.d2u*self.x[3]*np.abs(self.x[3]) + self.d1u*self.x[3],
+                         self.d2v*self.x[4]*np.abs(self.x[4]) + self.d1v*self.x[4],
+                         self.d1r*self.x[5]])
+
+    def Tau(self, Ud, Xd):
+        Fx = (self.d1u + self.d2u*np.abs(self.x[3])) * self.x[3] + \
+             (self.x[4]*self.x[5] + self.Kp_p*(Ud - self.x[3])) * self.m
+        Fy = self.Kp_psi * self.Iz / self.lr * ((Xd - self.x[2]) - self.Kd_psi*self.x[5])
+
+        if np.abs(Fx) > self.Fxmax:
+            Fx = np.sign(Fx)*self.Fxmax # :todo: Not realistic to go full speed reverse?
+
+        if np.abs(Fy) > self.Fymax:
+            Fy = np.sign(Fy)*self.Fymax
+
+        return np.array([Fx, Fy, self.lr*Fy])
 
     def update(self, Ud, Xd):
-        u0 = Ud
-        psi0 = Xd
-
         Rz = np.array([[ np.cos(self.x[2]),-np.sin(self.x[2]), 0],
                        [ np.sin(self.x[2]), np.cos(self.x[2]), 0],
                        [ 0                , 0                , 1]])
 
-        Fx = (d1u + d2u*np.abs(self.x[3])) * self.x[3] + m*(self.x[4]*self.x[5] + Kp_p*(u0 - self.x[3]))
-        Fy = Kp_psi*Iz / lr * ((psi0 - self.x[2]) - Kd_psi*self.x[5])
-
-        if np.abs(Fx) > Fxmax:
-            Fx = np.sign(Fx)*Fxmax
-        if np.abs(Fy) > Fymax:
-            Fy = np.sign(Fy)*Fymax
-
-        tau = np.array([Fx, Fy, lr*Fy])
-
         self.x[0:3] += self.dT * np.dot(Rz, self.x[3:6])
-        self.x[3:6] += self.dT * np.dot(np.diag([1/m, 1/m, 1/Iz]), tau - self.Cvv() - self.Dvv())
-
-        # TODO: Is this necesarry? I don't think this copies the array, so it could be set in init
-        # and world_object.x would always point to VesselModel.x
-        #world_object.x = self.x
+        self.x[3:6] += self.dT * np.dot(np.diag([1/self.m, 1/self.m, 1/self.Iz]),
+                                        self.Tau(Ud, Xd) - self.Cvv() - self.Dvv())
 
         return self.x
 
@@ -389,7 +546,10 @@ class Map(object):
         """Draws the map in the given matplotlib axes."""
         for poly in self._obstacles:
             poly.draw(axes, pcolor, ecolor)
-        axes.axis([-10, self._dim[0], -10, self._dim[1]], 'equal')
+
+        #axes.axis('equal')
+        #axes.axis([-10, self._dim[0], -10, self._dim[1]])
+
         axes.set_xlabel('x [m]')
         axes.set_ylabel('y [m]')
 
@@ -559,13 +719,16 @@ if __name__ == "__main__":
 
     # print x[0:3]
 
-    scen = Scenario('s1')
+    scen = Scenario('collision')
     sim  = Simulation(scen)
 
     sim.run_sim()
 
-    fig, ax = plt.subplots()
+    fig = plt.figure()
+    ax  = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                          xlim=(-10, 160), ylim=(-10, 160))
+    ax.grid()
+    #ani = sim.animate(fig, ax)
     sim.draw(ax)
-
     plt.show()
 
