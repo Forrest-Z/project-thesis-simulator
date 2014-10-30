@@ -4,13 +4,15 @@ import numpy as np
 class LOSGuidance(object):
     """This class implements  """
     def __init__(self):
-        self.R2 = 5.0**2 # Radii of acceptance
+        self.R2 = 10.0**2 # Radii of acceptance (squared)
         self.de = 10 # TODO: determine Lookahead distance
 
-        self.cWP = 0 # Current waypoin
+        self.cWP = 0 # Current waypoint
 
         self.wp_initialized = False
 
+        self.Xd = 0.0
+        self.Xp = 0.0
 
     def update(self, vessel_object):
         if not self.wp_initialized:
@@ -25,6 +27,9 @@ class LOSGuidance(object):
                     self.wp_initialized = True
                     self.Xp = np.arctan2(self.wp[self.cWP + 1][1] - self.wp[self.cWP][1],
                                          self.wp[self.cWP + 1][0] - self.wp[self.cWP][0])
+                    vessel_object.current_goal = self.wp[self.cWP+1]
+                    print vessel_object.current_goal, self.Xp
+
 
         x = vessel_object.x[0]
         y = vessel_object.x[1]
@@ -38,8 +43,9 @@ class LOSGuidance(object):
                 # print "Next waypoint: (%.2f, %.2f)" % (self.wp[self.cWP+1][0],
                 #                                        self.wp[self.cWP+1][1])
                 self.cWP += 1
+                vessel_object.current_goal = self.wp[self.cWP+1]
                 self.Xp = np.arctan2(self.wp[self.cWP + 1][1] - self.wp[self.cWP][1],
-                                   self.wp[self.cWP + 1][0] - self.wp[self.cWP][0])
+                                     self.wp[self.cWP + 1][0] - self.wp[self.cWP][0])
             else:
                 # Last waypoint reached
 
@@ -60,7 +66,7 @@ class LOSGuidance(object):
         e  = -(x - xk)*np.sin(self.Xp) + (y - yk)*np.cos(self.Xp)
 
         Xr = np.arctan2( -e, self.de)
-        Xd = self.Xp + Xr
+        psi_d = self.Xp + Xr
 
-        vessel_object.Xd = Xd
-        vessel_object.Ud = 3.0
+        vessel_object.psi_d = psi_d
+        vessel_object.u_d = 3.0

@@ -103,6 +103,7 @@ class HybridAStar(object):
 
         self.graph = SearchGrid(the_map, [5.0, 5.0, 15.0/360.0], N=3)
 
+        # :todo: Should be the_world?
         self.map = the_map
         self.eps = 10.0
         self.to_be_updated = True
