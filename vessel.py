@@ -6,8 +6,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-from ctrl_DWA import DynamicWindow
-
 from matplotlib.patches import Circle
 
 class Vessel(object):
@@ -18,7 +16,8 @@ class Vessel(object):
         self.controllers    = controllers          # List of controllers (A*, LOS, etc.)
         self.is_main_vessel = is_main_vessel       # Is this our main vessel?
 
-        self.waypoints      = np.array([[xg]])
+        self.goal           = xg
+        self.waypoints      = np.array([xg])
         self.current_goal   = self.waypoints[0]
 
         self.h              = h
@@ -28,7 +27,7 @@ class Vessel(object):
 
         self.path           = np.zeros((self.N, 6))
 
-        self.psi_d = 0
+        self.psi_d = np.Inf
         self.u_d   = 0
         self.r_d   = 0
 
@@ -79,8 +78,11 @@ class Vessel(object):
             lcolor = 'b'
             wpcolor= 'b'
 
+        axes.plot(self.path[0, 0], self.path[0,1], 'o', mfc=fcolor, ms=4)
+        axes.plot(self.goal[0], self.goal[1], 'o', mfc='r', ms=4)
+
         self.draw_path(axes, n, lcolor, fcolor)
-        self.draw_waypoints(axes, n, wpcolor)
+        #self.draw_waypoints(axes, n, wpcolor)
 
     def draw_path(self, axes, n, lcolor='r', fcolor='y', ecolor='k'):
         """Draws vessel path with patches."""
@@ -89,8 +91,7 @@ class Vessel(object):
         N = int(n / (self.dT / self.h))
 
         for ctrl in self.controllers:
-            if isinstance(ctrl, DynamicWindow):
-                ctrl.draw(axes, N)
+            ctrl.draw(axes, N)
 
         for ii in range(0, n, int(self.dT/self.h) * 8):
             self.draw_patch(axes, self.path[ii], fcolor, ecolor)
@@ -210,7 +211,7 @@ class VesselModel(object):
             self.Kd_psi = 1.0
             self.Kp_r   = 5.0
 
-            self.rudder_max = 2*28.8
+            self.rudder_max = 28.8
             self.rudder_K = 4.0
             self.propeller_max = 2310.0
         # Values other algorithms can use to get information about the model

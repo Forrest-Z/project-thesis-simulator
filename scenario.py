@@ -79,37 +79,47 @@ class Scenario(object):
             v2 = Vessel(x02, xg2,self.dT, self.dT, self.N, [myLOS2], is_main_vessel=False, vesseltype='viknes')
             v2.waypoints = np.array([[0, 120], [120, 120], [120, 0]])
 
-            self.world = World([v1, v2], the_map)
+            # Vessel 3
+            x03 = np.array([0, 50, np.pi/2, 3.0, 0, 0])
+            xg3 = np.array([140, 0, 0])
+
+            myLOS3 = LOSGuidance()
+
+            v3 = Vessel(x03, xg3, self.dT, self.dT, self.N, [myLOS3], is_main_vessel=False, vesseltype='viknes')
+            v3.waypoints = np.array([[0, 50], [0, 120], [120, 120]])
+
+
+            self.world = World([v1, v2, v3], the_map)
 
         if name == 'dynwnd':
-            the_map = Map()
+            the_map = Map('s1')
 
-            self.tend = 40   # Simulation time (seconds)
+            self.tend = 50   # Simulation time (seconds)
             self.h    = 0.05 # Integrator time step
             self.dT   = 0.5  # Controller time step
             self.N    = int(np.around(self.tend / self.h)) + 1
 
             # Vessel 1 (Main vessel)
-            x01 = np.array([0, 0, np.pi/4, 3.0, 0, 0])
-            xg1 = np.array([100, 100, np.pi/4])
+            x01 = np.array([5, 5, np.pi/4, 3.0, 0, 0])
+            xg1 = np.array([120, 120, np.pi/4])
 
             myLOS1 = LOSGuidance()
             myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1)
 
-            v1 = Vessel(x01, xg1, self.h, self.dT, self.N, [myLOS1, myDynWnd], is_main_vessel=True, vesseltype='viknes')
+            v1 = Vessel(x01, xg1, self.h, self.dT, self.N, [myDynWnd], is_main_vessel=True, vesseltype='viknes')
             v1.waypoints = np.array([[0, 0], [120, 120]])
             #v1.waypoints = np.array([[0, 0], [140, 0], [120, 120]])
 
             # Vessel 2
-            x02 = np.array([120, 120, -3*np.pi/4, 3.0, 0, 0])
-            xg2 = np.array([140, 0, 0])
+            #x02 = np.array([120, 120, -3*np.pi/4, 3.0, 0, 0])
+            #xg2 = np.array([140, 0, 0])
 
-            myLOS2 = LOSGuidance()
+            #myLOS2 = LOSGuidance()
 
-            v2 = Vessel(x02, xg2, self.h, self.dT, self.N, [myLOS2], is_main_vessel=False, vesseltype='viknes')
-            v2.waypoints = np.array([[120, 120], [0, 0]])
+            #v2 = Vessel(x02, xg2, self.h, self.dT, self.N, [myLOS2], is_main_vessel=False, vesseltype='viknes')
+            #v2.waypoints = np.array([[120, 120], [0, 0]])
 
-            self.world = World([v1, v2], the_map)
+            self.world = World([v1], the_map)
 
             myDynWnd.the_world = self.world
 
@@ -124,18 +134,18 @@ class Scenario(object):
 
 
 if __name__ == "__main__":
-    scen = Scenario('collision')
+    scen = Scenario('dynwnd')
     sim  = Simulation(scen)
 
     sim.run_sim()
 
     fig = plt.figure()
-    ax  = fig.add_subplot(111, aspect='equal', autoscale_on=False,
-                          xlim=(-10, 160), ylim=(-10, 160))
-    ax.grid()
+    ax  = fig.add_subplot(111, autoscale_on=False)
+
+
     #ani = sim.animate(fig, ax)
     sim.draw(ax)
-    plt.show()
-
-    ani = sim.animate(fig,ax)
+    #plt.show()
+    ax.grid()
+    #ani = sim.animate(fig,ax)
     plt.show()

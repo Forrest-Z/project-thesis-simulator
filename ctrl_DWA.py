@@ -11,14 +11,18 @@ import time, cProfile
 from matplotlib import pyplot as plt
 
 import numpy as np
-#import utils
+import copy
+
+from world import World
+from map import Map, Polygon
+from vessel import Vessel
 
 class DynamicWindow(object):
     def __init__(self, dT, N):
 
         self.window_res = [9, 51]  # xy Dynamic Window resolution
-        self.xStride = 1.0
-        self.yStride = 1.0
+        self.xStride = 1
+        self.yStride = 1
         self.dT = dT
 
         self.window          = np.zeros(self.window_res)
@@ -27,7 +31,11 @@ class DynamicWindow(object):
         self.dist_map        = np.zeros(self.window_res)
         self.scaled_dist_map = np.zeros(self.window_res)
 
-        self.arches          = [[None for x in xrange(self.window_res[1])] for x in xrange(self.window_res[0])]
+        self.u_range = None
+        self.r_range = None
+
+        self.current_arches  = [[None for x in xrange(self.window_res[1])] for x in xrange(self.window_res[0])]
+        self.arches          = [None] * N
         self.best_arches     = [None] * N
 
         self.test_arch = True
@@ -47,9 +55,9 @@ class DynamicWindow(object):
         self.pred_horiz = 30
         self.time_step  = 5
         
-        self.alpha = 1#0.3 * 180 / np.pi
-        self.beta  = 1#0.2
-        self.gamma = 1#0.5
+        self.alpha = 0.8#0.3 * 180 / np.pi
+        self.beta  = 0.1#0.2
+        self.gamma = 0.1#0.5
 
         self.u_max = 3.0
          
@@ -57,16 +65,24 @@ class DynamicWindow(object):
         # created, which depends on Vessel and Controller objects.
         self.the_world = None
         self.last_update = -self.dT
+        self.psi_target = None
 
     def update(self, vessel_object):
-
-        tic = time.clock()
 
         x = vessel_object.x[0]
         y = vessel_object.x[1]
         psi = vessel_object.x[2]
         u = vessel_object.x[3]  # body frame forward velocity
         r = vessel_object.x[5]
+
+
+        if not self.psi_target:
+            self.goal = vessel_object.goal
+
+        self.psi_target = np.arctan2(self.goal[1] - y,
+                                     self.goal[0] - x)
+        tic = time.clock()
+
 
         self.window.fill(0)
         self.velocity_map.fill(0)
@@ -75,17 +91,17 @@ class DynamicWindow(object):
         self.scaled_dist_map.fill(0)
 
         # Determine reachable surge velocities
-        u_rad_max = min(u + vessel_object.model.est_du_max * self.dT,
+        u_rad_max = min(u + vessel_object.model.est_du_max * self.time_step,
                         min(self.u_max, vessel_object.model.est_u_max))
-        u_rad_min = max(u + vessel_object.model.est_du_min * self.dT,
+        u_rad_min = max(u + vessel_object.model.est_du_min * self.time_step,
                         max(-self.u_max, vessel_object.model.est_u_min))
 
         u_range = np.linspace(u_rad_max, u_rad_min, self.window_res[0])
         
         # Determine reachable yaw velocities
-        r_rad_max = min(r + vessel_object.model.est_dr_max * self.dT,
+        r_rad_max = min(r + vessel_object.model.est_dr_max * self.time_step,
                         vessel_object.model.est_r_max)
-        r_rad_min = max(r - vessel_object.model.est_dr_max * self.dT,
+        r_rad_min = max(r - vessel_object.model.est_dr_max * self.time_step,
                         -vessel_object.model.est_r_max)
 
         r_range = np.linspace(r_rad_max, r_rad_min, self.window_res[1])
@@ -95,14 +111,14 @@ class DynamicWindow(object):
         # print u_range
 
         # Calculate distance map
-        for uk in range(0, len(u_range)):
+        for uk in range(0, self.window_res[0]):
             u = u_range[uk]
 
-            for rk in range(0, len(r_range)):
+            for rk in range(0, self.window_res[1]):
                 r = r_range[rk]
 
                 # Calculate distance map. The reachable points.
-                self.calc_dist_map(u_range, r_range, uk, rk, x, y, psi, u, r)
+                self.calc_dist_map(uk, rk, x, y, psi, u, r)
                 
                 # Calculate the dynamic window
                 self.calc_dyn_wind(uk, rk, x, y, psi, u, r,
@@ -162,7 +178,8 @@ class DynamicWindow(object):
             self.rk_best = rk_best
         # :todo: draw beautiful paths
         n = int(vessel_object.time / self.dT)
-        self.best_arches[n] = self.arches[self.uk_best][self.rk_best]
+        #self.arches[n] = copy.deepcopy(self.current_arches[self.uk_best])
+        #self.best_arches[n] = rk_best
         
         toc = time.clock()
         print "Dynamic window CPU time: %.3f" %(toc-tic)
@@ -170,7 +187,7 @@ class DynamicWindow(object):
 
         #print r_range, self.rk_best
         
-    def calc_dist_map(self, u_range, r_range, uk, rk, x, y, psi, u, r):
+    def calc_dist_map(self, uk, rk, x, y, psi, u, r):
         if u == 0:
             # No disatance
             self.scaled_dist_map[uk, rk] = 0
@@ -187,6 +204,7 @@ class DynamicWindow(object):
                                y + (u/r)*np.cos(psi)])
 
             # Angle from circle center to target
+            # :Todo: Optimize? This only needs to be calculated once?
             beta = np.arctan2(y - center[1],
                               x - center[0])
 
@@ -242,17 +260,17 @@ class DynamicWindow(object):
             # Iterate along circle, testing for intersections
             alpha = beta
             max_dist = 0
-            path = np.empty((2, int(np.around(self.pred_horiz/step_time))-1))
+            #path = np.empty((int(np.around(self.pred_horiz/step_time))+1, 2))
             it = 0
             for t in np.linspace(step_time,
                                  self.pred_horiz,
-                                 int(np.around(self.pred_horiz/step_time)) - 1):
+                                 int(np.around(self.pred_horiz/step_time)) + 1):
                 alpha += cstep
                 xk = center[0] + radius*np.cos(alpha)
                 yk = center[1] + radius*np.sin(alpha)
                 
                 # :todo: draw paths?
-                path[:,it] = xk, yk
+                #path[it] = xk, yk
                 it += 1
 
                 if (cstep > 0 and alpha >= last_alpha) or \
@@ -268,7 +286,7 @@ class DynamicWindow(object):
 
                 max_dist += step_dist
 
-            self.arches[uk][rk] = path[:,:it]
+            #self.current_arches[uk][rk] = path[:it]
 
             # Update distance map with max distance along this path
             # relatice to possible distance
@@ -294,17 +312,17 @@ class DynamicWindow(object):
             y_step = np.sign(u)*step_dist*np.sin(psi)
             xk = x
             yk = y
-            path = np.empty((2, int(np.around(self.pred_horiz/step_time))-1))
+            #path = np.empty((int(np.around(self.pred_horiz/step_time))+1, 2))
             it = 0
             for t in np.linspace(step_time,
                                  self.pred_horiz,
-                                 int(np.around(self.pred_horiz/step_time))-1):
+                                 int(np.around(self.pred_horiz/step_time))+1):
                 xk += x_step
                 yk += y_step
                 
                 # :todo: draw/store paths?
-                path[:,it] = xk, yk
-                it += 1
+                #path[it] = xk, yk
+                #it += 1
 
                 if max_dist >= 2*self.win_radius:
                     # We are done
@@ -317,7 +335,7 @@ class DynamicWindow(object):
                     break
                 max_dist += step_dist
             
-            self.arches[uk][rk] = path[:,:it]
+            #self.current_arches[uk][rk] = path[:it]
 
             # :todo: Draw/update paths
             self.scaled_dist_map[uk, rk] = max_dist / (2*self.win_radius)
@@ -342,31 +360,38 @@ class DynamicWindow(object):
             # The psi value should be calculated as the obtained psi
             # when applying maximum deceleration to the yaw after the
             # next time step.
-            psi_next   = psi + r*self.dT + 0.5*r*np.abs(r/est_dr_max)
+            psi_next   = psi + r*self.time_step + 0.5*r*np.abs(r/est_dr_max)
             
             # :todo: Not working properly for now.
             # If psi_d is np.Inf, then it was set by DWA previously,
             # else it is set by LOS and we should weigh accordingly
-            if psi_d == np.Inf:
-                psi_target = np.arctan2(goal[1] - y,
-                                        goal[0] - x)
-            else:
-                psi_target = psi_d
+            # if psi_d == np.Inf:
+            #     psi_target = np.arctan2(goal[1] - y,
+            #                             goal[0] - x)
+            # else:
+            #     psi_target = psi_d
                 
             # If in reverse, heading is the opposite
             if u < 0:
                 psi_next += np.pi
 
-            heading = np.pi - np.abs(normalize_angle(psi_next - psi_target, 0))
-
+            heading = np.pi - np.abs(normalize_angle(psi_next - self.psi_target, 0))
+            
             self.velocity_map[uk, rk] = u
             self.heading_map[uk, rk] = heading
             
     def draw(self, axes, n):
-        print n
-        for ii in range(0, n, 4):
-            axes.plot(self.best_arches[ii][0],
-                      self.best_arches[ii][1], 'r')
+        return
+
+        for ii in range(0, n, 1):
+            for jj in range(0, self.window_res[1]):
+                if jj == self.best_arches[ii]:
+                    print "bezt!", ii, jj, self.best_arches[ii], self.arches[ii][jj][0][:]
+                    axes.plot(self.arches[ii][jj][:][0],
+                              self.arches[ii][jj][:][1], 'r', lw=3)
+                else:
+                    axes.plot(self.arches[ii][jj][0][0],
+                              self.arches[ii][jj][0][1], 'bx', ms=5)
 
 
 def normalize_angle(angle, angle_ref):
@@ -429,63 +454,77 @@ def int_circles(x1, y1, r1, x2, y2, r2):
 
 
 def test():
-    the_map = utils.Map()
-    
-    obstacle = utils.Polygon([(40,15), (45,15), (45,20), (40,20)], safety_region_length=4.0)
-    the_map.add_obstacles([obstacle])
+    the_map = Map('s1')
+    tic = time.clock()
+    the_map.discretize_map()
+    print time.clock() - tic
+    #obstacle = Polygon([(40,15), (45,15), (45,20), (40,20)], safety_region_length=4.0)
+    #the_map.add_obstacles([obstacle])
 
-    tend = 100
-    dT = 0.5
-    N  = int(tend/dT) +1
-    x0 = np.array([10, 10, 0.0, 1.0, 0, 0])
+    tend = 10
+    dT = 1
+    h  = 0.05
+    N  = int(tend/h)  + 1
+    N2 = int(tend/dT) + 1
+
+    x0 = np.array([10, 10, 0.0, 3.0, 0, 0])
     xg = np.array([50, 50, 0])
 
-    myDynWnd = DynamicWindow(dT, N)
+    myDynWnd = DynamicWindow(dT, N2)
 
-    v = utils.Vessel(x0, xg, 0.1, 0.5, N, [myDynWnd], is_main_vessel=True, vesseltype='viknes')
+    v = Vessel(x0, xg, h, dT, N, [myDynWnd], is_main_vessel=True, vesseltype='viknes')
+    v.current_goal = np.array([50, 50])
 
-    world = utils.World([v], the_map)
+    world = World([v], the_map)
 
     myDynWnd.the_world = world
     
-    world.update_world(0,0)
+    world.update_world(0,0, dT)
 
 
-#cProfile.run('test()')
+def simple_scenario_with_plot():
+    the_map = Map('s1')
+        
+    #obstacle = Polygon([(30,15), (35,15), (35,20), (30,20)], safety_region_length=4.0)
+    #the_map.add_obstacles([obstacle])
+
+    tend = 50
+    dT = 1
+    h  = 0.05
+    N  = int(tend/h) + 1
+    N2 = int(tend/dT) + 1
+    x0 = np.array([0, 0, 0.5, 3.0, 0, 0])
+    xg = np.array([120, 120, 0])
+
+    myDynWnd = DynamicWindow(dT, N2)
+
+    v = Vessel(x0, xg, h, dT, N, [myDynWnd], is_main_vessel=True, vesseltype='viknes')
+    v.current_goal = np.array([50, 50])
+
+    world = World([v], the_map)
+
+    myDynWnd.the_world = world
+
+    n = 0
+    for t in np.linspace(0, tend, N):
+        world.update_world(t, n, dT)
+        n += 1
+
+    fig = plt.figure()
+    ax  = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                          xlim=(-10, 10), ylim=(-10, 10))
+
+    #fig, ax = plt.subplots()
+    ax.grid()
+
+    world.draw(ax, N)
+    print "N, N2, n: ", N, N2, n
+    myDynWnd.draw(ax, N2)
+
+
+    plt.show()
+
 
 if __name__ == "__main__":
-    # the_map = utils.Map()
-    
-    # obstacle = utils.Polygon([(40,15), (45,15), (45,20), (40,20)], safety_region_length=4.0)
-    # the_map.add_obstacles([obstacle])
-
-    # tend = 100
-    # dT = 0.5
-    # N  = int(tend/dT)
-    # x0 = np.array([10, 10, 0.0, 1.0, 0, 0])
-    # xg = np.array([50, 50, 0])
-
-    # myDynWnd = DynamicWindow(dT)
-
-    # v = utils.Vessel(x0, xg, dT, N, [myDynWnd], is_main_vessel=True, vesseltype='viknes')
-
-    # world = utils.World([v], the_map)
-
-    # myDynWnd.the_world = world
-    
-    # world.update_world(0)
-    
-    # fig, axes = plt.subplots()
-
-    # # the_map.draw(axes)
-    # # myDynWnd.draw(axes)
-    # # axes.axis([-10, 50, -10, 50])
-
-    # scen = utils.Scenario('dynwnd')
-    # sim = utils.Simulation(scen)
-
-    # sim.run_sim()
-    
-    # ani = sim.animate(fig, axes)
-    # plt.show()
-    pass
+    simple_scenario_with_plot()
+    #test()

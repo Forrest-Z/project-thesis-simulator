@@ -13,7 +13,6 @@ class World(object):
 
         self._is_collided = False
 
-
     def get_num_vessels(self):
         return len(self._vessels)
 
@@ -22,12 +21,13 @@ class World(object):
             v.time = t
             v.update_model(n)
             if np.fmod(t, dT) == 0:
+                print "Sim time: %.2f \tVessel position: (%.2f, %.2f)." % (t, v.x[0], v.x[1])
                 v.update_controllers()
 
     def is_occupied(self, x, y, t):
         """Is the point (x,y) occupied at time t?"""
-        #if self._map.is_occupied((x,y)):
-        #    return True
+        if self._map.is_occupied_discrete((x,y)):
+            return True
 
         # Check for collision with other vessels
         for ii in range(1, len(self._vessels)):
@@ -106,8 +106,8 @@ class World(object):
                 p.set_xy(newp)
             return patchlist
 
-        ani = animation.FuncAnimation(fig, update_patches, range(0, n, 10),
+        ani = animation.FuncAnimation(fig, update_patches, range(0, n, 5),
                                       init_func=init,
-                                      interval=50,
+                                      interval=100,
                                       blit=False)
         return ani
