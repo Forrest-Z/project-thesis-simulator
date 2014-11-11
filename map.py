@@ -10,7 +10,7 @@ import time
 
 class Map(object):
     """This class provides a general map."""
-    def __init__(self, maptype=None, gridsize=1):
+    def __init__(self, maptype=None, gridsize=1, safety_region_length=1.0):
         """Initialize map. Default map is blank 160x160m.'"""
         self._dim = [160, 160]
         self._obstacles = []
@@ -22,28 +22,38 @@ class Map(object):
                                         (63.32, 35.44),
                                         (64.06, 47.28),
                                         (50.00, 50.00),
-                                        (43.64, 35.89)]),
+                                        (43.64, 35.89)],safety_region_length),
                                Polygon([(24.40, 55.13),
                                         (22.62, 69.04),
                                         (43.04, 76.59),
                                         (47.04, 67.71),
-                                        (40.00, 60.00)]),
+                                        (40.00, 60.00)],safety_region_length),
                                Polygon([(46.45, 94.35),
                                         (85.22, 69.04),
                                         (80.00, 90.00),
-                                        (59.77, 94.64)])]
+                                        (59.77, 94.64)],safety_region_length)]
         elif maptype == 'triangle':
             self._dim = [20, 20]
 
             self._obstacles = [Polygon([(1.5, 1.5),
                                         (18.5, 3.5),
-                                        (10.7, 17.3)])]
+                                        (10.7, 17.3)],safety_region_length)]
+
+        elif maptype == 'polygon':
+            self._obstacles = [Polygon([(30.76, 23.75),
+                                        (51.92, 20.79),
+                                        (63.32, 35.44),
+                                        (64.06, 47.28),
+                                        (50.00, 50.00),
+                                        (43.64, 35.89)],safety_region_length)]
+
+            self._dim = [80, 80]
 
         self._is_discretized = False
         self._gridsize = gridsize
         self._grid = None
 
-    def discretize_map(self, gridsize=1):
+    def discretize_map(self):
         """
         Creates a discrete version of the map.
 
@@ -52,10 +62,9 @@ class Map(object):
         """
         tic = time.clock()
 
-        self._gridsize = gridsize
-
-        self._discrete_dim = [int(self._dim[0]/self._gridsize),
-                              int(self._dim[1]/self._gridsize)]
+        scale = 1/self._gridsize
+        self._discrete_dim = [int(self._dim[0]*scale),
+                              int(self._dim[1]*scale)]
 
         self._grid = np.zeros(self._discrete_dim)
 
@@ -63,22 +72,22 @@ class Map(object):
             V = o.get_vertices(safe=True)
 
             xymax = np.amax(V, axis=0)
-            xmax  = int(np.ceil(xymax[0]))
-            ymax  = int(np.ceil(xymax[1]))
+            xmax  = np.ceil(xymax[0]*scale) / scale
+            ymax  = np.ceil(xymax[1]*scale) / scale
 
             xymin = np.amin(V, axis=0)
-            xmin  = int(np.floor(xymin[0]))
-            ymin  = int(np.floor(xymin[1]))
+            xmin  = np.floor(xymin[0]*scale) / scale
+            ymin  = np.floor(xymin[1]*scale) / scale
 
-            for gridY in range(ymin, ymax):
+            for gridY in np.arange(ymin, ymax, self._gridsize):
                 # Build a list of nodes
                 xnodes = []
                 j     = len(V) - 1 # Index of last vertice
                 for i in range(0, len(V)):
                     if (V[i][1] < gridY and V[j][1] >= gridY) or \
                        (V[j][1] < gridY and V[i][1] >= gridY):
-                        x = int( V[i][0] + \
-                                 (gridY - V[i][1])/(V[j][1] - V[i][1])*(V[j][0] - V[i][0]) )
+                        x = (V[i][0] + \
+                             (gridY - V[i][1])/(V[j][1] - V[i][1])*(V[j][0] - V[i][0]))
                         xnodes.append(x)
                     j = i
 
@@ -97,8 +106,8 @@ class Map(object):
                         if xnodes[i] > xmax:
                             # :todo: will this happen?
                             xnodes[i] = xmax
-                        for j in range(xnodes[i], xnodes[i+1]):
-                            self._grid[j, gridY] = 1
+                        for j in np.arange(xnodes[i], xnodes[i+1], self._gridsize):
+                            self._grid[int(j*scale), int(gridY*scale)] = 1
 
         self._is_discretized = True
 
@@ -141,13 +150,18 @@ class Map(object):
     def is_occupied_discrete(self, point):
         if not self._is_discretized:
             self.discretize_map()
+
         p = int(point[0]/self._gridsize), int(point[1]/self._gridsize)
 
-        if p[0] >= self._dim[0] or \
-           p[1] >= self._dim[1]:
-            return True
+        if p[0] > self._dim[0] or \
+           p[1] > self._dim[1] or \
+           p[0] < 0 or \
+           p[1] < 0:
+            #print "Shitshitshit", p
+            return False # :TODO: WHAT dO?
+
         else:
-            return self._grid[p] > 0.0
+            return (self._grid[p] > 0.0)
 
     def is_occupied(self, point, safety_region=True):
         """Returns True if the given points is inside an obstacle."""
@@ -168,27 +182,28 @@ class Map(object):
         xvals = np.arange(0, self._dim[0], self._gridsize)
         yvals = np.arange(0, self._dim[1], self._gridsize)
 
-        axes.pcolor(xvals, yvals, self._grid.T, cmap=plt.get_cmap(fill), alpha=0.2)
+        print len(xvals), len(self._grid)
+
+
+        axes.imshow(self._grid.T, origin='lower', cmap=plt.get_cmap(fill), alpha=0.7,
+                   extent=(0, self._dim[0], 0, self._dim[1]))
 
     def draw(self, axes, pcolor='g', ecolor='k', draw_discrete=False):
         """Draws the map in the given matplotlib axes."""
 
-        if self._is_discretized and draw_discrete:
-            for poly in self._obstacles:
-                poly.draw(axes, pcolor, ecolor, alpha=0.5)
-
+        if draw_discrete:
             self.draw_discrete(axes)
+            for poly in self._obstacles:
+                poly.draw(axes, pcolor, ecolor, alph=1.)
+
+
 
         else:
             for poly in self._obstacles:
-                poly.draw(axes, pcolor, ecolor, alpha=1.0)
+                poly.draw(axes, pcolor, ecolor, alph=1.0)
 
-        axes.set_xlabel('x [m]')
-        axes.set_ylabel('y [m]')
 
-        axes.set_xlim([0, self._dim[0]])
-        axes.set_ylim([0, self._dim[1]])
-        axes.axis('equal')
+
 
 class Polygon(object):
     """Generalized polygon class."""
@@ -300,9 +315,9 @@ class Polygon(object):
 
         return points
 
-    def draw(self, axes, fcolor, ecolor, alpha):
+    def draw(self, axes, fcolor, ecolor, alph):
         """Plots the polygon with the given plotter."""
-        poly = matplotlib.patches.Polygon(self._V, facecolor=fcolor, edgecolor=ecolor, alpha=alpha)
+        poly = matplotlib.patches.Polygon(self._V, facecolor=fcolor, edgecolor=ecolor, alpha=alph)
         axes.add_patch(poly)
         if self._safety_region:
             poly_safe = matplotlib.patches.Polygon(self._V_safe, facecolor='none', edgecolor=fcolor)
@@ -310,15 +325,27 @@ class Polygon(object):
 
 
 if __name__=="__main__":
-    amap = Map('triangle')
+    amap = Map('triangle', gridsize=1., safety_region_length=1.0)
     fig = plt.figure()
-    ax  = fig.add_subplot(111, autoscale_on=False)
+    ax  = fig.add_subplot(111, autoscale_on=True)
 
     #fig, ax = plt.subplots()
 
-    amap.draw(ax)
+    amap.draw(ax, draw_discrete=False)
 
-    amap.draw_discrete(ax)
+    ax.axis('scaled')
+    ax.set_xlim(-2.5,22.5)
+    ax.set_ylim(-2.5,22.5)
+    #amap.draw_discrete(ax)
 
-    ax.grid()
+    ax.xaxis.set_major_locator(plt.MultipleLocator(5.0))
+    ax.xaxis.set_minor_locator(plt.MultipleLocator(1.))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(5.0))
+    ax.yaxis.set_minor_locator(plt.MultipleLocator(1.))
+    ax.grid(which='major', axis='x', linewidth=0.75, linestyle='-', color='1.')
+    ax.grid(which='minor', axis='x', linewidth=0.5, linestyle='-', color='0.7')
+    ax.grid(which='major', axis='y', linewidth=0.75, linestyle='-', color='1.')
+    ax.grid(which='minor', axis='y', linewidth=0.5, linestyle='-', color='0.7')
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
     plt.show()

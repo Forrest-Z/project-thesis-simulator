@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import numpy as np
 
+from matplotlib.patches import Circle
+
 class LOSGuidance(object):
     """This class implements  """
     def __init__(self):
@@ -70,3 +72,12 @@ class LOSGuidance(object):
 
         vessel_object.psi_d = psi_d
         vessel_object.u_d = 3.0
+
+    def draw(self, axes, N, wpcolor='y', ecolor='k'):
+        axes.plot(self.wp[:,0], self.wp[:,1], 'k--')
+        ii = 1
+        for wp in self.wp[1:]:
+            circle = Circle((wp[0], wp[1]), 10, facecolor=wpcolor, alpha=0.3, edgecolor='k')
+            axes.add_patch(circle)
+            axes.annotate(str(ii), xy=(wp[0], wp[1]), xytext=(wp[0]+5, wp[1]-5))
+            ii += 1

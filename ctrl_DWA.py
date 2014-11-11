@@ -17,13 +17,17 @@ from world import World
 from map import Map, Polygon
 from vessel import Vessel
 
-class DynamicWindow(object):
-    def __init__(self, dT, N):
+from utils import *
 
-        self.window_res = [9, 51]  # xy Dynamic Window resolution
-        self.xStride = 1
-        self.yStride = 1
+class DynamicWindow(Controller):
+    def __init__(self, dT, N, gridsize=0.5):
+
+        self.window_res = [3, 11]  # xy Dynamic Window resolution
+        self.xStride = gridsize
+        self.yStride = gridsize
         self.dT = dT
+        self.N  = N
+        self.n  = 0
 
         self.window          = np.zeros(self.window_res)
         self.velocity_map    = np.zeros(self.window_res)
@@ -41,7 +45,7 @@ class DynamicWindow(object):
         self.test_arch = True
 
         # :todo: change
-        self.goal = None
+        self.goal = np.array([120,120])
 
         self.MAX_REVERSE_SP  = -99999
 
@@ -51,13 +55,15 @@ class DynamicWindow(object):
         self.cur_uk = 5
         self.cur_rk = 8
 
-        self.win_radius = 40
-        self.pred_horiz = 30
+        self.win_radius = 25
+        self.pred_horiz = 20
         self.time_step  = 5
         
-        self.alpha = 0.8#0.3 * 180 / np.pi
-        self.beta  = 0.1#0.2
-        self.gamma = 0.1#0.5
+        self.alpha = 0.3#0.7
+        self.beta  = 0.2#0.2
+        self.gamma = 0.5#0.5
+
+        self.sigma = 0.0 # Low pass filter constant
 
         self.u_max = 3.0
          
@@ -84,7 +90,7 @@ class DynamicWindow(object):
         tic = time.clock()
 
 
-        self.window.fill(0)
+        #self.window.fill(0)
         self.velocity_map.fill(0)
         self.heading_map.fill(0)
         self.dist_map.fill(0)
@@ -133,14 +139,14 @@ class DynamicWindow(object):
         if heading_min == heading_max:
             self.heading_map.fill(0)
         else:
-            self.heading_map  = (self.heading_map - heading_min) / (heading_max - heading_min)
+            self.heading_map  = (self.heading_map - heading_min) / float(heading_max - heading_min)
 
         velocity_min = np.amin(self.velocity_map)
         velocity_max = np.amax(self.velocity_map)
         if velocity_min == velocity_max:
             self.velocity_map.fill(0)
         else:
-            self.velocity_map  = (self.velocity_map - velocity_min) / (velocity_max - velocity_min)        
+            self.velocity_map  = (self.velocity_map - velocity_min) / float(velocity_max - velocity_min)
     
 
         dist_min = np.amin(self.scaled_dist_map)
@@ -148,12 +154,14 @@ class DynamicWindow(object):
         if dist_min == dist_max:
             self.scaled_dist_map.fill(0)
         else:
-            self.scaled_dist_map  = (self.scaled_dist_map - dist_min) / (dist_max - dist_min)
+            self.scaled_dist_map  = (self.scaled_dist_map - dist_min) / float(dist_max - dist_min)
 
         
         # Compose window
-        self.window = self.alpha*self.heading_map + self.beta*self.scaled_dist_map + \
-                      self.gamma*self.velocity_map
+        self.window = self.sigma * self.window + \
+                      (1.-self.sigma) * (self.alpha*self.heading_map + \
+                                        self.beta *self.scaled_dist_map + \
+                                        self.gamma*self.velocity_map)
 
         # Find the best option
         n = np.argmax(self.window)
@@ -168,6 +176,9 @@ class DynamicWindow(object):
 
             uk_best = self.cur_uk
             rk_best = self.cur_rk
+            self.best_arches[self.n] = np.zeros((1,2))
+            print "SHITSHITSHIT!!!!"
+
         else:
             # Use best choice
             vessel_object.psi_d = np.Inf
@@ -176,25 +187,27 @@ class DynamicWindow(object):
             #print vessel_object.u_d, vessel_object.r_d
             self.uk_best = uk_best
             self.rk_best = rk_best
+            self.best_arches[self.n] = copy.deepcopy(self.current_arches[self.uk_best][self.rk_best])
+
         # :todo: draw beautiful paths
-        n = int(vessel_object.time / self.dT)
-        #self.arches[n] = copy.deepcopy(self.current_arches[self.uk_best])
-        #self.best_arches[n] = rk_best
-        
+
+
+        self.n += 1
         toc = time.clock()
-        print "Dynamic window CPU time: %.3f" %(toc-tic)
+        print "Dynamic window: (%.2f, %.2f, %.2f) CPU time: %.3f" %(x,y,psi,toc-tic)
 
 
         #print r_range, self.rk_best
         
     def calc_dist_map(self, uk, rk, x, y, psi, u, r):
-        if u == 0:
+        if np.abs(u) < 0.01:
             # No disatance
             self.scaled_dist_map[uk, rk] = 0
             self.dist_map[uk, rk] = 0
+            self.current_arches[uk][rk] = np.zeros((1,2))
             return
 
-        if np.abs(r) > 0:
+        if np.abs(r) > 0.01:
             # The (u, r) circle is defined by:
             #    radius: u/r
             #    center: [x - (u/r)*sin(psi), y + (u/r)*cos(psi)]
@@ -246,7 +259,6 @@ class DynamicWindow(object):
                 
             # Find the angle of the given intersection.
             # It should be the last angle in the iteration below
-            
             last_alpha = normalize_angle(np.arctan2(coords[1] - center[1],
                                                     coords[0] - center[0]),
                                          beta)
@@ -260,18 +272,15 @@ class DynamicWindow(object):
             # Iterate along circle, testing for intersections
             alpha = beta
             max_dist = 0
-            #path = np.empty((int(np.around(self.pred_horiz/step_time))+1, 2))
+            path = np.empty((int(np.around(self.pred_horiz/step_time))+1, 2))
             it = 0
-            for t in np.linspace(step_time,
-                                 self.pred_horiz,
-                                 int(np.around(self.pred_horiz/step_time)) + 1):
+            for t in np.arange(step_time, self.pred_horiz, step_time):
                 alpha += cstep
                 xk = center[0] + radius*np.cos(alpha)
                 yk = center[1] + radius*np.sin(alpha)
                 
                 # :todo: draw paths?
-                #path[it] = xk, yk
-                it += 1
+
 
                 if (cstep > 0 and alpha >= last_alpha) or \
                    (cstep < 0 and alpha <= last_alpha):
@@ -284,9 +293,12 @@ class DynamicWindow(object):
                     # Intersection
                     break
 
+                path[it] = xk, yk
+                it += 1
+
                 max_dist += step_dist
 
-            #self.current_arches[uk][rk] = path[:it]
+            self.current_arches[uk][rk] = path[:(it)]
 
             # Update distance map with max distance along this path
             # relatice to possible distance
@@ -312,17 +324,13 @@ class DynamicWindow(object):
             y_step = np.sign(u)*step_dist*np.sin(psi)
             xk = x
             yk = y
-            #path = np.empty((int(np.around(self.pred_horiz/step_time))+1, 2))
+            path = np.empty((int(np.around(self.pred_horiz/step_time))+1, 2))
             it = 0
-            for t in np.linspace(step_time,
-                                 self.pred_horiz,
-                                 int(np.around(self.pred_horiz/step_time))+1):
+            for t in np.arange(step_time, self.pred_horiz, step_time):
                 xk += x_step
                 yk += y_step
                 
                 # :todo: draw/store paths?
-                #path[it] = xk, yk
-                #it += 1
 
                 if max_dist >= 2*self.win_radius:
                     # We are done
@@ -333,9 +341,13 @@ class DynamicWindow(object):
                                                 t/self.dT):
                     # Found intersection
                     break
+                    
+                path[it] = xk, yk
+                it += 1
+
                 max_dist += step_dist
             
-            #self.current_arches[uk][rk] = path[:it]
+            self.current_arches[uk][rk] = path[:(it)]
 
             # :todo: Draw/update paths
             self.scaled_dist_map[uk, rk] = max_dist / (2*self.win_radius)
@@ -380,78 +392,16 @@ class DynamicWindow(object):
             self.velocity_map[uk, rk] = u
             self.heading_map[uk, rk] = heading
             
-    def draw(self, axes, n):
-        return
+    def draw(self, axes, n, fcolor='y', ecolor='k'):
+        print "wut m8?", self.N, self.n, n
+        for ii in range(0, self.n, 8):
+            axes.plot(self.best_arches[ii][:,0], self.best_arches[ii][:,1], 'r', alpha=0.5,
+                      lw=2)
 
-        for ii in range(0, n, 1):
-            for jj in range(0, self.window_res[1]):
-                if jj == self.best_arches[ii]:
-                    print "bezt!", ii, jj, self.best_arches[ii], self.arches[ii][jj][0][:]
-                    axes.plot(self.arches[ii][jj][:][0],
-                              self.arches[ii][jj][:][1], 'r', lw=3)
-                else:
-                    axes.plot(self.arches[ii][jj][0][0],
-                              self.arches[ii][jj][0][1], 'bx', ms=5)
-
-
-def normalize_angle(angle, angle_ref):
-    """
-    Makes 'angle' compatible with 'angle_ref' such that the numerical
-    difference is at most PI
-    """
-    if angle_ref == np.Inf:
-        return angle
-
-    # Get angle within 2*PI of angle_ref
-    diff = angle_ref - angle
-    if diff > 0:
-        new_angle = angle + (diff - np.fmod(diff, 2*np.pi))
-    else:
-        new_angle = angle + (diff + np.fmod(-diff, 2*np.pi))
-
-    # Make sure angle is on the closest side of angle_ref
-    diff = angle_ref - new_angle
-    if diff > np.pi:
-        new_angle += 2*np.pi
-    elif diff < -np.pi:
-        new_angle -= 2*np.pi
-
-    return new_angle
-
-
-def int_circles(x1, y1, r1, x2, y2, r2):
-    """Tests for intersection between two circles.
-
-    Returns:
-        int = True on intersection
-        coords = coordinates of intersection (numpy.array)
-
-    http://local.wasp.uwa.edu.au/~pbourke/geometry/2circle/
-    """
-
-    # Distance between circle centers
-    d = np.sqrt((x2-x1)**2 + (y2-y1)**2)
-
-    if (d > r1 + r2) or (d < np.abs(r1-r2)):
-        # No solution
-        return False, []
-
-    a = (r1**2 - r2**2 + d**2 ) / (2*d)
-
-    xp = x1 + a*(x2 - x1)/d
-    yp = y1 + a*(y2 - y1)/d
-
-    if (d == r1 + r2):
-        # One solution
-        coords = np.array([xp, yp])
-        return True, coords
-    else:
-        # Two solutions
-        h = np.sqrt(r1**2 - a**2);
-        coords = np.array([[xp+h*(y2-y1)/d, yp-h*(x2-x1)/d],
-                           [xp-h*(y2-y1)/d, yp+h*(x2-x1)/d]])
-    return True, coords
-
+    def visualize(self, axes, t, n):
+        """Visualize current arch. For real-time plotting."""
+        axes.plot(self.best_arches[self.n-1][:,0],
+                  self.best_arches[self.n-1][:,1], 'r', alpha=0.5)
 
 def test():
     the_map = Map('s1')

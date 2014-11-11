@@ -8,6 +8,8 @@ import matplotlib.animation as animation
 
 from matplotlib.patches import Circle
 
+from utils import normalize_angle
+
 class Vessel(object):
     """General vessel class."""
     def __init__(self, x0, xg, h, dT, N, controllers, is_main_vessel=False, vesseltype='revolt'):
@@ -82,18 +84,26 @@ class Vessel(object):
         axes.plot(self.goal[0], self.goal[1], 'o', mfc='r', ms=4)
 
         self.draw_path(axes, n, lcolor, fcolor)
-        #self.draw_waypoints(axes, n, wpcolor)
 
     def draw_path(self, axes, n, lcolor='r', fcolor='y', ecolor='k'):
         """Draws vessel path with patches."""
-        axes.plot(self.path[:n,0], self.path[:n,1], linestyle='dashed', color=lcolor)
-
-        N = int(n / (self.dT / self.h))
+        N = int( n / (self.dT / self.h))
 
         for ctrl in self.controllers:
-            ctrl.draw(axes, N)
+            ctrl.draw(axes, N, fcolor, ecolor)
 
-        for ii in range(0, n, int(self.dT/self.h) * 8):
+        axes.plot(self.path[:n,0], self.path[:n,1], linestyle='dashed', color=lcolor)
+
+        if len(self.waypoints) < 2:
+            circle = Circle((self.goal[0], self.goal[1]), 10,
+                            facecolor=fcolor,
+                            alpha=0.3,
+                            edgecolor='k')
+            axes.add_patch(circle)
+            axes.annotate('Goal', xy=(self.goal[0], self.goal[1]), xytext=(self.goal[0]+5, self.goal[1]-5))
+
+
+        for ii in range(0, n, int(self.dT/self.h) * 16):
             self.draw_patch(axes, self.path[ii], fcolor, ecolor)
 
     def draw_waypoints(self, axes, n, wpcolor):
@@ -102,7 +112,9 @@ class Vessel(object):
         axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--')
 
         ii = 1
-        for wp in self.waypoints[:]:
+        print len(self.waypoints)
+
+        for wp in self.waypoints[1:-1]:
             circle = Circle((wp[0], wp[1]), 10, facecolor=wpcolor, alpha=0.3, edgecolor='k')
             axes.add_patch(circle)
             axes.annotate(str(ii), xy=(wp[0], wp[1]), xytext=(wp[0]+5, wp[1]-5))
@@ -120,8 +132,15 @@ class Vessel(object):
         shape = np.dot(Rz, self._shape.transpose()).transpose()
         shape = np.add(shape, (x, y))
 
-        poly = matplotlib.patches.Polygon(shape, facecolor=fcolor, edgecolor=ecolor)
+        poly = matplotlib.patches.Polygon(shape, facecolor=fcolor, edgecolor=ecolor, alpha=0.7)
         axes.add_patch(poly)
+
+    def visualize(self, axes, t, n):
+        if n % 16 == 0:
+            self.draw_patch(axes, self.model.x)
+            for ctrl in self.controllers:
+                ctrl.visualize(axes, t, n)
+
 
     def animate(self, fig, ax, n, has_collided=False):
         """Animate the path."""
@@ -209,37 +228,34 @@ class VesselModel(object):
             self.Kp_p = 0.1
             self.Kp_psi = 5.0
             self.Kd_psi = 1.0
-            self.Kp_r   = 5.0
+            self.Kp_r   = 8.0
 
-            self.rudder_max = 28.8
-            self.rudder_K = 4.0
-            self.propeller_max = 2310.0
         # Values other algorithms can use to get information about the model
 
         # Max yawrate:
         # inertia*r_dot = -(d1r + d2r*|r|)*r + fr_max*lx = 0
         if self.d2r > 0:
             self.est_r_max = 0.5*(-self.d1r + \
-                                  np.sqrt(self.d1r**2 + 4*self.d1r*self.rudder_max*self.rudder_K)) / d2r
+                                  np.sqrt(self.d1r**2 + 4*self.d1r*self.Fymax*self.lr)) / d2r
         else:
-            self.est_r_max = self.rudder_max*self.rudder_K / self.d1r
+            self.est_r_max = self.Fymax*self.lr / self.d1r
 
         # Max yaw acceleration (at r = 0):
-        self.est_dr_max = self.rudder_max*self.rudder_K / self.Iz
+        self.est_dr_max = self.Fymax*self.lr / self.Iz
 
         # Max surge velocity
         # mass*u_dot = -(d1u + d2u*|u|)*u + force_max = 0
         if self.d2u > 0:
             self.est_u_max = 0.5*(-self.d1u + \
-                                  np.sqrt(self.d1u**2 + 4*self.d1u*self.propeller_max)) / self.d2u
+                                  np.sqrt(self.d1u**2 + 4*self.d1u*self.Fxmax)) / self.d2u
         else:
-            self.est_u_max = self.propeller_max / self.d1u;
+            self.est_u_max = self.Fxmax / self.d1u;
 
         # Min surge velocity (max reverse)
         self.est_u_min = -self.est_u_max;
 
         # Max surge acceleration
-        self.est_du_max = self.propeller_max / self.m
+        self.est_du_max = self.Fxmax / self.m
         # Min surge acceleration (max reverse)
         self.est_du_min = -self.est_du_max
 
@@ -280,4 +296,38 @@ class VesselModel(object):
         self.x[3:6] += self.h * np.dot(np.diag([1/self.m, 1/self.m, 1/self.Iz]),
                                        self.Tau(u_d, psi_d, r_d) - self.Cvv() - self.Dvv())
 
+        while self.x[2] >= np.pi:
+            self.x[2] -= 2*np.pi
+
+        while self.x[2] < -np.pi:
+            self.x[2] += 2*np.pi
+
         return self.x
+
+
+if __name__ == "__main__":
+
+    fig = plt.figure()
+    axes = fig.add_subplot(111,autoscale_on=False)
+    axes.axis('scaled')
+    axes.set_xlim(-5,5)
+    axes.set_ylim(-5,5)
+    x0 = np.array([0,0,np.pi/4,0,0,0])
+    xg = np.array([0,0,0])
+    myVessel = Vessel(x0, xg, 0.1, 0.1, 1, [], True, 'viknes')
+    myVessel.draw_patch(axes, x0, 'b', 'k')
+
+    axes.arrow(0,0,3.5,3.5,
+               width=0.1,
+               head_width=0.3,
+               ec='k',
+               fc='r')
+    axes.arrow(0,0,3.5,-3.5,
+               width=0.1,
+               head_width=0.3,
+               ec='k',
+               fc='g')
+
+    plt.axis('off')
+    plt.savefig("test.pdf", dpi=90, bbox_inches="tight", format="pdf")
+    plt.show()

@@ -16,12 +16,14 @@ class World(object):
     def get_num_vessels(self):
         return len(self._vessels)
 
-    def update_world(self, t, n, dT=0.5):
+    def update_world(self, t, n):
         for v in self._vessels:
             v.time = t
             v.update_model(n)
-            if np.fmod(t, dT) == 0:
-                print "Sim time: %.2f \tVessel position: (%.2f, %.2f)." % (t, v.x[0], v.x[1])
+            if int(t*100)%int(v.dT*100) == 0:
+                #print "Sim time: %.2f \tVessel position: (%.2f, %.2f, %.2f)." % (t, v.x[0],
+                #                                                                 v.x[1],
+                #                                                                 v.x[2]*180/np.pi)
                 v.update_controllers()
 
     def is_occupied(self, x, y, t):
@@ -34,11 +36,12 @@ class World(object):
             xi  = self._vessels[ii].x[0:2]
             psi = self._vessels[ii].x[3]
             u   = self._vessels[ii].x[4]
+            v   = self._vessels[ii].x[5]
 
-            xnext = xi[0] #+ np.cos(psi)*(t - self._vessels[ii].time)*u
-            ynext = xi[1] #+ np.sin(psi)*(t - self._vessels[ii].time)*u
+            xnext = xi[0]# + (np.cos(psi)*u - np.sin *t
+            ynext = xi[1]# + np.sin(psi)*u*t
 
-            if (x - xnext)**2 + (y - ynext)**2 < 90:
+            if (x - xnext)**2 + (y - ynext)**2 < 100:
                 # Collision
                 return True
         return False
@@ -54,7 +57,7 @@ class World(object):
         # Check for collision with other vessels
         for ii in range(1, len(self._vessels)):
             vi = self._vessels[ii].model.x[0:2]
-            if (p0[0] - vi[0])**2 + (p0[1] - vi[1])**2 < 50:
+            if (p0[0] - vi[0])**2 + (p0[1] - vi[1])**2 < 25:
                 # Collision
                 self._is_collided = True
                 return True
@@ -62,18 +65,25 @@ class World(object):
         # No collision detected
         return False
 
+    def reached_goal(self, R2=50):
+        # :Todo: Assuming vessel0 is main vessel, valid?
+        p0 = self._vessels[0].model.x[0:2]
+        g  = self._vessels[0].goal[0:2]
+        return (p0[0] - g[0])**2 + (p0[1] - g[1])**2 < R2
+
+
     def draw(self, axes, n):
-        self._map.draw(axes)
         for v in self._vessels:
             v.draw(axes, n)
 
         if self._is_collided:
             self._vessels[0].draw_collision(axes, n)
 
+        self._map.draw(axes, draw_discrete=False)
+
     def animate(self, fig, ax, n):
 
         self._map.draw(ax)
-
         patchlist = []
         shapelist = []
 
@@ -106,8 +116,20 @@ class World(object):
                 p.set_xy(newp)
             return patchlist
 
-        ani = animation.FuncAnimation(fig, update_patches, range(0, n, 5),
+        ani = animation.FuncAnimation(fig, update_patches, range(0, n, 2),
                                       init_func=init,
-                                      interval=100,
+                                      interval=30,
                                       blit=False)
         return ani
+
+    def visualize(self, axes, t, n):
+        if n == 0:
+            self._map.draw(axes)
+
+        for v in self._vessels:
+            v.visualize(axes, t, n)
+
+    def save(self, filename):
+        """Save simulation to file."""
+        # :TODO: implement
+        pass
