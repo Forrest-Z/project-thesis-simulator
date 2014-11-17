@@ -3,10 +3,12 @@ import numpy as np
 
 from matplotlib.patches import Circle
 
-class LOSGuidance(object):
+from utils import Controller
+
+class LOSGuidance(Controller):
     """This class implements  """
-    def __init__(self):
-        self.R2 = 10.0**2 # Radii of acceptance (squared)
+    def __init__(self, R2=100):
+        self.R2 = R2 # Radii of acceptance (squared)
         self.de = 10 # TODO: determine Lookahead distance
 
         self.cWP = 0 # Current waypoint
@@ -56,7 +58,7 @@ class LOSGuidance(object):
                                                                   self.wp[self.cWP][0],
                                                                   self.wp[self.cWP][1])
                     print "Last Waypoint reached!"
-                    vessel_object.Ud = 0.0
+                    vessel_object.u_d = 0.0
                     self.R2 = np.Inf
                 return
 
@@ -74,10 +76,12 @@ class LOSGuidance(object):
         vessel_object.u_d = 3.0
 
     def draw(self, axes, N, wpcolor='y', ecolor='k'):
-        axes.plot(self.wp[:,0], self.wp[:,1], 'k--')
-        ii = 1
+
+        axes.plot(self.wp[:,0], self.wp[:,1], wpcolor+'--')
+
+        #ii = 0
         for wp in self.wp[1:]:
             circle = Circle((wp[0], wp[1]), 10, facecolor=wpcolor, alpha=0.3, edgecolor='k')
             axes.add_patch(circle)
-            axes.annotate(str(ii), xy=(wp[0], wp[1]), xytext=(wp[0]+5, wp[1]-5))
-            ii += 1
+            #axes.annotate(str(ii), xy=(wp[0], wp[1]), xytext=(wp[0]+5, wp[1]-5))
+            #ii += 1

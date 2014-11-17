@@ -6,6 +6,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
+import copy
+
 import time
 
 class Map(object):
@@ -15,7 +17,41 @@ class Map(object):
         self._dim = [160, 160]
         self._obstacles = []
 
-        if maptype == 's1':
+        if maptype=='s1':
+            self._dim = [160,160]
+            self._obstacles = [Polygon([(41.44, 39.01),
+                                        (32.78, 47.13),
+                                        (29.09, 60.75),
+                                        (31.65, 75.95),
+                                        (39.02, 85.38),
+                                        (49.8, 80.14),
+                                        (53.49, 65.47),
+                                        (49.24, 49.75)], safety_region_length),
+                               Polygon([(130.1, 78.7),
+                                        (111.86, 59.98),
+                                        (90.58, 73.86),
+                                        (86.04, 105.04),
+                                        (87.89, 122.59),
+                                        (108.6, 117.62),
+                                        (123.07, 99.54)], safety_region_length)]
+
+        if maptype == 's2':
+            self._obstacles = [Polygon([(39.9, 8.28),
+                                        (78.06, 26.7),
+                                        (84.54, 54.08),
+                                        (80.32, 72.17),
+                                        (67.06, 98.87),
+                                        (49.57, 112.39),
+                                        (25.51, 107.15),
+                                        (18.31, 87.38),
+                                        (24.27, 69.13),
+                                        (41.34, 76.73),
+                                        (60, 70),
+                                        (66.75, 48.17),
+                                        (56.26, 28.22),
+                                        (42.58, 19.27)], safety_region_length)]
+
+        if maptype == 'islands':
             self._dim = [160, 160]
             self._obstacles = [Polygon([(30.76, 23.75),
                                         (51.92, 20.79),
@@ -48,6 +84,23 @@ class Map(object):
                                         (43.64, 35.89)],safety_region_length)]
 
             self._dim = [80, 80]
+
+        elif maptype == 'minima':
+            self._obstacles = [Polygon([(39.9, 8.28),
+                                        (78.06, 26.7),
+                                        (84.54, 54.08),
+                                        (80.32, 72.17),
+                                        (67.06, 98.87),
+                                        (49.57, 112.39),
+                                        (25.51, 107.15),
+                                        (18.31, 87.38),
+                                        (24.27, 69.13),
+                                        (41.34, 76.73),
+                                        (60, 70),
+                                        (66.75, 48.17),
+                                        (56.26, 28.22),
+                                        (42.58, 19.27)], safety_region_length)]
+            self._dim = [160,160]
 
         self._is_discretized = False
         self._gridsize = gridsize
@@ -136,8 +189,21 @@ class Map(object):
         for o in obstacles:
             self._obstacles.append(o)
 
+    def get_discrete_grid(self):
+        if not self._is_discretized:
+            self.discretize_map()
+        return np.copy(self._grid)
+
+    def get_obstacle_points(self):
+        if not self._is_discretized:
+            self.discretize_map()
+        return np.transpose(np.nonzero(self._grid)) * self._gridsize
+
     def get_dimension(self):
-        return self._dim
+        return copy.copy(self._dim)
+
+    def get_gridsize(self):
+        return self._gridsize
 
     def disable_safety_region(self):
         for o in self._obstacles:
@@ -147,21 +213,33 @@ class Map(object):
         """Returns obstacles."""
         return self._obstacles
 
+    def get_obstacle_edges(self):
+        edges = []
+        for o in self._obstacles:
+            edges += list(o.get_vertices())
+        return edges
+
+    def get_obstacle_edge_samples(self, d):
+        points = []
+        for o in self._obstacles:
+            points += o.get_edge_points(d)
+        return points
+
     def is_occupied_discrete(self, point):
         if not self._is_discretized:
             self.discretize_map()
 
         p = int(point[0]/self._gridsize), int(point[1]/self._gridsize)
 
-        if p[0] > self._dim[0] or \
-           p[1] > self._dim[1] or \
+        if p[0] >= self._discrete_dim[0] or \
+           p[1] >= self._discrete_dim[1] or \
            p[0] < 0 or \
-           p[1] < 0:
-            #print "Shitshitshit", p
+           p[1] < 0 :
+            #print "Shitshitshit", point
             return False # :TODO: WHAT dO?
 
-        else:
-            return (self._grid[p] > 0.0)
+
+        return (self._grid[p] > 0.0)
 
     def is_occupied(self, point, safety_region=True):
         """Returns True if the given points is inside an obstacle."""
@@ -170,11 +248,6 @@ class Map(object):
                 return True
         return False
 
-    def get_obstacle_edge_samples(self, d):
-        points = []
-        for o in self._obstacles:
-            points += o.get_edge_points(d)
-        return points
 
     def draw_discrete(self, axes, fill='Greens'):
         if not self._is_discretized:
@@ -213,7 +286,7 @@ class Polygon(object):
         self._V = np.array(vertices)
 
 
-        if safety_region_length >= 1.0:
+        if safety_region_length > 0.0:
             self._V_safe = self.extrude(safety_region_length)
             self._safety_region = True
         else:
@@ -303,14 +376,19 @@ class Polygon(object):
 
     def get_edge_points(self, d):
         """Returns list of points along the edges of the polygon."""
-        n = len(self._V)
 
-        linesample = np.transpose(np.array([np.linspace(self._V[n-1][0], self._V[0][0], d),
-                                            np.linspace(self._V[n-1][1], self._V[0][1], d)]))
+        if self._safety_region:
+            V = self._V_safe
+        else:
+            V = self._V
+        n = len(V)
+
+        linesample = np.transpose(np.array([np.linspace(V[n-1][0], V[0][0], d),
+                                            np.linspace(V[n-1][1], V[0][1], d)]))
         points = linesample.tolist()
         for ii in range(0,n-1):
-            linesample = np.transpose(np.array([np.linspace(self._V[ii][0], self._V[ii+1][0], d),
-                                                np.linspace(self._V[ii][1], self._V[ii+1][1], d)]))
+            linesample = np.transpose(np.array([np.linspace(V[ii][0], V[ii+1][0], d),
+                                                np.linspace(V[ii][1], V[ii+1][1], d)]))
             points += linesample.tolist()
 
         return points
@@ -325,7 +403,7 @@ class Polygon(object):
 
 
 if __name__=="__main__":
-    amap = Map('triangle', gridsize=1., safety_region_length=1.0)
+    amap = Map('minima', gridsize=1., safety_region_length=2.0)
     fig = plt.figure()
     ax  = fig.add_subplot(111, autoscale_on=True)
 
@@ -334,18 +412,18 @@ if __name__=="__main__":
     amap.draw(ax, draw_discrete=False)
 
     ax.axis('scaled')
-    ax.set_xlim(-2.5,22.5)
-    ax.set_ylim(-2.5,22.5)
+    ax.set_xlim(-10.,160.)
+    ax.set_ylim(-10.,160.)
     #amap.draw_discrete(ax)
 
-    ax.xaxis.set_major_locator(plt.MultipleLocator(5.0))
-    ax.xaxis.set_minor_locator(plt.MultipleLocator(1.))
-    ax.yaxis.set_major_locator(plt.MultipleLocator(5.0))
-    ax.yaxis.set_minor_locator(plt.MultipleLocator(1.))
-    ax.grid(which='major', axis='x', linewidth=0.75, linestyle='-', color='1.')
-    ax.grid(which='minor', axis='x', linewidth=0.5, linestyle='-', color='0.7')
-    ax.grid(which='major', axis='y', linewidth=0.75, linestyle='-', color='1.')
-    ax.grid(which='minor', axis='y', linewidth=0.5, linestyle='-', color='0.7')
-    ax.set_xticklabels([])
-    ax.set_yticklabels([])
+    #ax.xaxis.set_major_locator(plt.MultipleLocator(5.0))
+    #ax.xaxis.set_minor_locator(plt.MultipleLocator(1.))
+    #ax.yaxis.set_major_locator(plt.MultipleLocator(5.0))
+    #ax.yaxis.set_minor_locator(plt.MultipleLocator(1.))
+    #ax.grid(which='major', axis='x', linewidth=0.75, linestyle='-', color='1.')
+    #ax.grid(which='minor', axis='x', linewidth=0.5, linestyle='-', color='0.7')
+    #ax.grid(which='major', axis='y', linewidth=0.75, linestyle='-', color='1.')
+    #ax.grid(which='minor', axis='y', linewidth=0.5, linestyle='-', color='0.7')
+    #ax.set_xticklabels([])
+    #ax.set_yticklabels([])
     plt.show()

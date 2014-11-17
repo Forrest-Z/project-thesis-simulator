@@ -22,7 +22,7 @@ from utils import *
 class DynamicWindow(Controller):
     def __init__(self, dT, N, gridsize=0.5):
 
-        self.window_res = [3, 11]  # xy Dynamic Window resolution
+        self.window_res = [5, 51]  # xy Dynamic Window resolution
         self.xStride = gridsize
         self.yStride = gridsize
         self.dT = dT
@@ -44,9 +44,6 @@ class DynamicWindow(Controller):
 
         self.test_arch = True
 
-        # :todo: change
-        self.goal = np.array([120,120])
-
         self.MAX_REVERSE_SP  = -99999
 
         # Temporary variables for plotting
@@ -55,8 +52,8 @@ class DynamicWindow(Controller):
         self.cur_uk = 5
         self.cur_rk = 8
 
-        self.win_radius = 25
-        self.pred_horiz = 20
+        self.win_radius = 40
+        self.pred_horiz = 30
         self.time_step  = 5
         
         self.alpha = 0.3#0.7
@@ -81,12 +78,8 @@ class DynamicWindow(Controller):
         u = vessel_object.x[3]  # body frame forward velocity
         r = vessel_object.x[5]
 
-
-        if not self.psi_target:
-            self.goal = vessel_object.goal
-
-        self.psi_target = np.arctan2(self.goal[1] - y,
-                                     self.goal[0] - x)
+        self.psi_target = np.arctan2(vessel_object.goal[1] - y,
+                                     vessel_object.goal[0] - x)
         tic = time.clock()
 
 
@@ -217,7 +210,6 @@ class DynamicWindow(Controller):
                                y + (u/r)*np.cos(psi)])
 
             # Angle from circle center to target
-            # :Todo: Optimize? This only needs to be calculated once?
             beta = np.arctan2(y - center[1],
                               x - center[0])
 
@@ -359,8 +351,8 @@ class DynamicWindow(Controller):
         # Only proceed if this is an admissible velocity, i.e.,
         # the vehicle can come to a complete stop after choosing
         # this alternative
-        if np.abs(u) > np.sqrt(2*dist + est_du_max) or \
-           np.abs(r) > np.sqrt(2*dist + est_dr_max):
+        if np.abs(u) > np.sqrt(2*dist * est_du_max) or \
+           np.abs(r) > np.sqrt(2*dist * est_dr_max):
             # Not admissible
             self.window[uk, rk] = 0
             self.heading_map[uk, rk] = 0
@@ -393,7 +385,6 @@ class DynamicWindow(Controller):
             self.heading_map[uk, rk] = heading
             
     def draw(self, axes, n, fcolor='y', ecolor='k'):
-        print "wut m8?", self.N, self.n, n
         for ii in range(0, self.n, 8):
             axes.plot(self.best_arches[ii][:,0], self.best_arches[ii][:,1], 'r', alpha=0.5,
                       lw=2)

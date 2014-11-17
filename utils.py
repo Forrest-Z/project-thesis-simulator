@@ -1,7 +1,20 @@
 #!/usr/bin/env python
 import time
-
+import heapq
 import numpy as np
+
+class PriorityQueue:
+    def __init__(self):
+        self.elements = []
+
+    def empty(self):
+        return len(self.elements) == 0
+
+    def put(self, item, priority):
+        heapq.heappush(self.elements, (priority, item))
+
+    def get(self):
+        return heapq.heappop(self.elements)[1]
 
 class Controller(object):
     def __init__(self):
@@ -10,7 +23,7 @@ class Controller(object):
     def update(self, vobj):
         pass
 
-    def draw(self):
+    def draw(self, axes, N, fcolor, ecolor):
         pass
 
     def visualize(self, axes, t, n):

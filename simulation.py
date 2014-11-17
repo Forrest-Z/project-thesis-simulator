@@ -2,6 +2,9 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+import time
+
 class Simulation(object):
     """This class combines the different classes needed to simulate a scenario.
 
@@ -33,6 +36,8 @@ class Simulation(object):
         """Runs the simulation."""
 
         print "Starting simulation"
+        tic = time.clock()
+
         for t in np.linspace(0, self.tend, self.N):
             """The actual simulation"""
 
@@ -50,8 +55,13 @@ class Simulation(object):
                 self._end_reason = "Success"
                 break
 
+            if np.fmod(t,5.0) == 0:
+                print "Simulation time: %.3f" % t
 
             self.n += 1
+
+        print "Total simulation time: %.3f"%(time.clock() - tic)
+
 
     def draw(self, axes):
         """Draw the simulation.

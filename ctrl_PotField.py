@@ -18,16 +18,16 @@ from utils import *
 
 class PotentialFields(Controller):
     def __init__(self, the_map, N):
-        self.goal = None
-        self.worldmap  = the_map
+        self.goal   = None
+        self.world  = None
 
-        self.mu = 20
-        self.d_max = 30
-        self.k = 5
+        self.mu = 40.
+        self.d_max = 50.
+        self.k = 25.
         self.xi = 0.6
         self.u_max = 3.0
         self.u_min = 2.0
-        self.map_res = 2
+        self.map_res = the_map.get_gridsize()
         self.x_stride = 1./self.map_res
         self.y_stride = 1./self.map_res
 
@@ -41,6 +41,8 @@ class PotentialFields(Controller):
         self.n = 0
 
     def update(self, v_obj):
+        if not self.world:
+            print "Need to configure World() in potential field controller!"
 
         try:
             if not self.goal:
@@ -90,7 +92,7 @@ class PotentialFields(Controller):
         for x in np.arange(xmin, xmax, self.x_stride):
             for y in np.arange(ymin, ymax, self.y_stride):
 
-                if self.worldmap.is_occupied_discrete((x,y)):
+                if self.world.is_occupied(x, y):
                     rho_sq = (x - xvec[0])**2 + (y - xvec[1])**2
 
                     if rho_sq < d_max_sq:

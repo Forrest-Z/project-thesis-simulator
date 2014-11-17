@@ -26,7 +26,7 @@ class World(object):
                 #                                                                 v.x[2]*180/np.pi)
                 v.update_controllers()
 
-    def is_occupied(self, x, y, t):
+    def is_occupied(self, x, y, t=0.):
         """Is the point (x,y) occupied at time t?"""
         if self._map.is_occupied_discrete((x,y)):
             return True

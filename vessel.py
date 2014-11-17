@@ -94,31 +94,29 @@ class Vessel(object):
 
         axes.plot(self.path[:n,0], self.path[:n,1], linestyle='dashed', color=lcolor)
 
-        if len(self.waypoints) < 2:
-            circle = Circle((self.goal[0], self.goal[1]), 10,
-                            facecolor=fcolor,
-                            alpha=0.3,
-                            edgecolor='k')
-            axes.add_patch(circle)
-            axes.annotate('Goal', xy=(self.goal[0], self.goal[1]), xytext=(self.goal[0]+5, self.goal[1]-5))
+
+        circle = Circle((self.goal[0], self.goal[1]), 10,
+                        facecolor=fcolor,
+                        alpha=0.3,
+                        edgecolor='k')
+        axes.add_patch(circle)
+        axes.annotate('Goal', xy=(self.goal[0], self.goal[1]), xytext=(self.goal[0]+5, self.goal[1]-5))
 
 
-        for ii in range(0, n, int(self.dT/self.h) * 16):
+        for ii in range(0, n, int(self.dT/self.h) * 14):
             self.draw_patch(axes, self.path[ii], fcolor, ecolor)
 
     def draw_waypoints(self, axes, n, wpcolor):
         """Draws waypoints"""
 
-        axes.plot(self.waypoints[:,0], self.waypoints[:,1], 'k--')
+        axes.plot(self.waypoints[:,0], self.waypoints[:,1], wpcolor+'--')
 
-        ii = 1
-        print len(self.waypoints)
+        circle = Circle((self.goal[0], self.goal[1]), 10,
+                        facecolor='r',
+                        edgecolor='k',
+                        alpha=0.3)
+        axes.add_patch(circle)
 
-        for wp in self.waypoints[1:-1]:
-            circle = Circle((wp[0], wp[1]), 10, facecolor=wpcolor, alpha=0.3, edgecolor='k')
-            axes.add_patch(circle)
-            axes.annotate(str(ii), xy=(wp[0], wp[1]), xytext=(wp[0]+5, wp[1]-5))
-            ii += 1
 
     def draw_patch(self, axes, state, fcolor='y', ecolor='k'):
         """Draws the Vessel as a  matplotlib.patches.Polygon to the gives axes."""
