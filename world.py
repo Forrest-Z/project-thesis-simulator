@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.patches import Circle
 
+from matplotlib2tikz import save as tikz_save
+
 class World(object):
     def __init__(self, vessels, the_map):
         self._vessels = vessels
@@ -15,6 +17,9 @@ class World(object):
 
     def get_num_vessels(self):
         return len(self._vessels)
+
+    def get_discrete_grid(self):
+        return self._map.get_discrete_grid()
 
     def update_world(self, t, n):
         for v in self._vessels:
@@ -34,17 +39,20 @@ class World(object):
         # Check for collision with other vessels
         for ii in range(1, len(self._vessels)):
             xi  = self._vessels[ii].x[0:2]
-            psi = self._vessels[ii].x[3]
-            u   = self._vessels[ii].x[4]
-            v   = self._vessels[ii].x[5]
+            psi = self._vessels[ii].x[2]
+            u   = self._vessels[ii].x[3]
+            v   = self._vessels[ii].x[4]
 
-            xnext = xi[0]# + (np.cos(psi)*u - np.sin *t
-            ynext = xi[1]# + np.sin(psi)*u*t
+            # Predict vessel motion
+            xnext = xi[0] + ( np.cos(psi)*u ) * t
+            ynext = xi[1] + ( np.sin(psi)*u ) * t
 
             if (x - xnext)**2 + (y - ynext)**2 < 100:
                 # Collision
                 return True
+
         return False
+
 
     def collision_detection(self):
         p0 = self._vessels[0].model.x[0:2]
@@ -57,7 +65,7 @@ class World(object):
         # Check for collision with other vessels
         for ii in range(1, len(self._vessels)):
             vi = self._vessels[ii].model.x[0:2]
-            if (p0[0] - vi[0])**2 + (p0[1] - vi[1])**2 < 25:
+            if (p0[0] - vi[0])**2 + (p0[1] - vi[1])**2 < 50:
                 # Collision
                 self._is_collided = True
                 return True
@@ -122,13 +130,23 @@ class World(object):
                                       blit=False)
         return ani
 
-    def visualize(self, axes, t, n):
-        if n == 0:
-            self._map.draw(axes)
+    def visualize(self, fig, axarr, t, n):
 
-        for v in self._vessels:
-            v.visualize(axes, t, n)
+        if int(t*100)%int(8*0.5*100) == 0:
+            del axarr[0].collections[:]
+            del axarr[0].lines[:]
+            del axarr[0].patches[:]
+            del axarr[0].texts[:]
 
+            self._map.draw(axarr[0])
+            for v in self._vessels:
+                v.visualize(fig, axarr, t, n)
+
+            plt.draw()
+            plt.pause(0.001)
+            cmd = raw_input('Iteration: %d. Hit ENTER to continue... (s for save)'%n)
+            if cmd == 's':
+                fig.savefig('simt-step-t-' + str(t) + '.pdf', dpi=600, format='pdf', bbox_inches='tight')
     def save(self, filename):
         """Save simulation to file."""
         # :TODO: implement

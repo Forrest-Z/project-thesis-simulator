@@ -44,11 +44,8 @@ class PotentialFields(Controller):
         if not self.world:
             print "Need to configure World() in potential field controller!"
 
-        try:
-            if not self.goal:
-                self.goal = v_obj.goal
-        except:
-            pass
+        self.goal = v_obj.current_goal
+
 
         self.Fo = np.zeros(2)
         self.Fa = np.zeros(2)
@@ -68,6 +65,7 @@ class PotentialFields(Controller):
         # Apply force to boat
         self.F = self.Fo + self.Fa
         v_obj.psi_d = np.arctan2(self.F[1], self.F[0])
+        #print "psi_d:", v_obj.psi_d
 
         cos_psi = np.cos(v_obj.x[2])
         sin_psi = np.sin(v_obj.x[2])
@@ -85,7 +83,6 @@ class PotentialFields(Controller):
         self.n += 1
 
     def get_virtual_force(self, xvec, xmin, ymin, xmax, ymax):
-
 
         d_max_sq = self.d_max**2
 

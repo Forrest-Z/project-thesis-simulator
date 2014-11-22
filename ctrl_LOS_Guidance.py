@@ -7,7 +7,7 @@ from utils import Controller
 
 class LOSGuidance(Controller):
     """This class implements  """
-    def __init__(self, R2=100):
+    def __init__(self, R2=100, u_d = 3.0):
         self.R2 = R2 # Radii of acceptance (squared)
         self.de = 10 # TODO: determine Lookahead distance
 
@@ -17,6 +17,7 @@ class LOSGuidance(Controller):
 
         self.Xd = 0.0
         self.Xp = 0.0
+        self.u_d = u_d
 
     def update(self, vessel_object):
         if not self.wp_initialized:
@@ -73,7 +74,7 @@ class LOSGuidance(Controller):
         psi_d = self.Xp + Xr
 
         vessel_object.psi_d = psi_d
-        vessel_object.u_d = 3.0
+        vessel_object.u_d = self.u_d
 
     def draw(self, axes, N, wpcolor='y', ecolor='k'):
 

@@ -14,13 +14,13 @@ class Vessel(object):
     """General vessel class."""
     def __init__(self, x0, xg, h, dT, N, controllers, is_main_vessel=False, vesseltype='revolt'):
 
-        self.model          = VesselModel(x0, h)   # Dynamical model for vessel
+
         self.controllers    = controllers          # List of controllers (A*, LOS, etc.)
         self.is_main_vessel = is_main_vessel       # Is this our main vessel?
 
         self.goal           = xg
         self.waypoints      = np.array([xg])
-        self.current_goal   = self.waypoints[0]
+        self.current_goal   = np.copy(self.waypoints[0])
 
         self.h              = h
         self.dT             = dT
@@ -33,7 +33,7 @@ class Vessel(object):
         self.u_d   = 0
         self.r_d   = 0
 
-        self.x  = self.model.x # This is a numpy array -> will be a reference :D
+
 
         self.time = 0.0
 
@@ -41,23 +41,61 @@ class Vessel(object):
             self._scale   = 1.0/20.0
             self._length  = 60.0 * self._scale
             self._breadth = 14.5 * self._scale
+            self.model    = VesselModel(x0, h, vesseltype)
+            # Vertices of a polygon.
+            self._shape = np.asarray([(-self._length/2, -self._breadth/2),
+                                      (-self._length/2,  self._breadth/2),
+                                      ( self._length/3,  self._breadth/2),
+                                      ( self._length/2,  0              ),
+                                      ( self._length/3, -self._breadth/2)])
+
         elif vesseltype == 'viknes':
             self._scale   = 1.0
             self._length  = 8.52 * self._scale
             self._breadth = 2.97 * self._scale
-        elif vesseltype == 'danskebaaten':
-            self._scale   = 1.0 / 4.0
-            self._length  = 223.70 * self._scale
-            self._breadth = 36.00  * self._scale
-        # Vertices of a polygon.
-        self._shape = np.asarray([(-self._length/2, -self._breadth/2),
-                                  (-self._length/2,  self._breadth/2),
-                                  ( self._length/3,  self._breadth/2),
-                                  ( self._length/2,  0              ),
-                                  ( self._length/3, -self._breadth/2)])
+            self.model    = VesselModel(x0, h, vesseltype)
+            # Vertices of a polygon.
+            self._shape = np.asarray([(-self._length/2, -self._breadth/2),
+                                      (-self._length/2,  self._breadth/2),
+                                      ( self._length/3,  self._breadth/2),
+                                      ( self._length/2,  0              ),
+                                      ( self._length/3, -self._breadth/2)])
+
+        elif vesseltype == 'hurtigruta':
+            self._scale   = 1.0
+            self._length  = 10.0 * self._scale
+            self._breadth = 4.75 * self._scale
+            self.model    = VesselModel(x0, h, vesseltype)
+            # Vertices of a polygon.
+            self._shape = np.asarray([(-self._length/2, -self._breadth/2),
+                                      (-self._length/2,  self._breadth/2),
+                                      ( 3*self._length/8,  self._breadth/2),
+                                      ( self._length/2,  0              ),
+                                      ( 3*self._length/8, -self._breadth/2)])
+
+        else:
+            print "Error in selection of vessel! You tried: ", vesseltype
+            print "Defaulting to: \'viknes\'"
+            self._scale   = 1.0
+            self._length  = 8.52 * self._scale
+            self._breadth = 2.97 * self._scale
+            self.model    = VesselModel(x0, h, 'viknes')
+
+
+        self.x  = self.model.x # This is a numpy array -> will be a reference :D
 
     def get_shape(self):
         return np.copy(self._shape)
+
+    def update_obstacle_map(self, omap, gridsize, t=0.0):
+        x = self.x[0]
+        y = self.x[1]
+        psi = self.x[2]
+        u = self.x[3]
+        omap[max(0,  int((x - np.cos(psi)*self._length/2)/gridsize)) : \
+             min(160,int((x + np.cos(psi)*(self._length/2 + u*t))/gridsize)),
+             max(0,  int((y - np.sin(psi)*self._breadth/2)/gridsize)) : \
+             min(160,int((y + np.sin(psi)*(self._breadth/2 + u*t))/gridsize))] = 1.0
 
     def update_model(self, n):
         self.path[n] = self.model.update(self.u_d, self.psi_d, self.r_d)
@@ -118,7 +156,7 @@ class Vessel(object):
         axes.add_patch(circle)
 
 
-    def draw_patch(self, axes, state, fcolor='y', ecolor='k'):
+    def draw_patch(self, axes, state, fcolor='none', ecolor='k'):
         """Draws the Vessel as a  matplotlib.patches.Polygon to the gives axes."""
         x   = state[0]
         y   = state[1]
@@ -130,15 +168,30 @@ class Vessel(object):
         shape = np.dot(Rz, self._shape.transpose()).transpose()
         shape = np.add(shape, (x, y))
 
-        poly = matplotlib.patches.Polygon(shape, facecolor=fcolor, edgecolor=ecolor, alpha=0.7)
+        if fcolor is 'none':
+            if self.is_main_vessel:
+                fcolor = 'b'
+            else:
+                fcolor = 'y'
+
+        poly = matplotlib.patches.Polygon(shape, facecolor=fcolor, edgecolor=ecolor, alpha=1.)
         axes.add_patch(poly)
 
-    def visualize(self, axes, t, n):
-        if n % 16 == 0:
-            self.draw_patch(axes, self.model.x)
-            for ctrl in self.controllers:
-                ctrl.visualize(axes, t, n)
+    def visualize(self, fig, axarr, t, n):
+        if self.is_main_vessel:
+            circle = Circle((self.goal[0], self.goal[1]), 10,
+                            facecolor='r',
+                            alpha=0.3,
+                            edgecolor='k')
+            axarr[0].add_patch(circle)
+            axarr[0].annotate('Goal', xy=(self.goal[0], self.goal[1]), xytext=(self.goal[0]+5, self.goal[1]-5))
 
+
+
+        for ctrl in self.controllers:
+            ctrl.visualize(fig, axarr, t, n)
+
+        self.draw_patch(axarr[0], self.model.x)
 
     def animate(self, fig, ax, n, has_collided=False):
         """Animate the path."""
@@ -228,6 +281,28 @@ class VesselModel(object):
             self.Kd_psi = 1.0
             self.Kp_r   = 8.0
 
+        elif vessel_model == 'hurtigruta':
+            # Set model parameters
+            self.d1u = 16.6
+            self.d1v = 9900.0
+            self.d1r = 330.0
+            self.d2u = 8.25
+            self.d2v = 330.0
+            self.d2r = 0.0
+
+            self.m   = 3300.0
+            self.Iz  = 1320.0
+
+            self.lr  = 4.0
+            self.Fxmax = 2310.0
+            self.Fymax = 28.8
+
+            self.Kp_p = 0.1
+            self.Kp_psi = 5.0
+            self.Kd_psi = 1.0
+            self.Kp_r   = 8.0
+
+
         # Values other algorithms can use to get information about the model
 
         # Max yawrate:
@@ -286,6 +361,9 @@ class VesselModel(object):
         return np.array([Fx, Fy, self.lr*Fy])
 
     def update(self, u_d, psi_d, r_d):
+
+        self.x[2] = normalize_angle(self.x[2], psi_d)
+
         Rz = np.array([[ np.cos(self.x[2]),-np.sin(self.x[2]), 0],
                        [ np.sin(self.x[2]), np.cos(self.x[2]), 0],
                        [ 0                , 0                , 1]])

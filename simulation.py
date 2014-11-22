@@ -19,7 +19,7 @@ class Simulation(object):
         tend       (float): The end time of the simulation (default 100)
 
     """
-    def __init__(self, scenario, axes=None):
+    def __init__(self, scenario, fig=None, axarr=None):
         """Initializes the simulation."""
         self.scenario = scenario
 
@@ -27,8 +27,8 @@ class Simulation(object):
         self.N    = self.scenario.N
         self.n    = 0
 
-
-        self.axes = axes
+        self.fig  = fig
+        self.axarr = axarr
 
         self._end_reason = "SimOK"
 
@@ -43,9 +43,9 @@ class Simulation(object):
 
             self.scenario.world.update_world(t, self.n)
 
-            if self.axes:
-                self.scenario.world.visualize(self.axes, t, self.n)
-                plt.draw()
+            if self.axarr:
+                self.scenario.world.visualize(self.fig, self.axarr, t, self.n)
+
             if self.scenario.world.collision_detection():
                 print "We have crashed!"
                 self._end_reason = "Collision"
@@ -60,8 +60,9 @@ class Simulation(object):
 
             self.n += 1
 
-        print "Total simulation time: %.3f"%(time.clock() - tic)
-
+        print "Total simulation CPU time: %.3f"%(time.clock() - tic)
+        if self.axarr:
+            raw_input("SIMULATION COMPLETE! Hit enter to exit")
 
     def draw(self, axes):
         """Draw the simulation.

@@ -26,7 +26,7 @@ class Controller(object):
     def draw(self, axes, N, fcolor, ecolor):
         pass
 
-    def visualize(self, axes, t, n):
+    def visualize(self, fig, axes, t, n):
         pass
 
 def normalize_angle(angle, angle_ref):

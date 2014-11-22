@@ -24,21 +24,29 @@ class PurePursuit(Controller):
                 self.nWP   = len(self.wps)
                 vobj.u_d   = 3.0
 
+            elif self.mode == 'goal-switcher':
+                self.cGoal = self.wps[self.cWP]
+                vobj.current_goal = self.cGoal
+                self.nWP = len(self.wps)
+
             self.is_initialized = True
+
 
         x = vobj.x[0]
         y = vobj.x[1]
 
-        if (x - self.cGoal[0])**2 + (y - self.cGoal[1])**2 < self.R2:
-            if self.cWP < self.nWP - 1:
-                self.cWP += 1
-                self.cGoal = self.wps[self.cWP]
+        if not self.mode == 'pursuit':
+            if (x - self.cGoal[0])**2 + (y - self.cGoal[1])**2 < self.R2:
+                if self.cWP < self.nWP - 1:
+                    self.cWP += 1
+                    self.cGoal = self.wps[self.cWP]
+                    vobj.current_goal = np.copy(self.cGoal)
+                else:
+                    vobj.u_d = 0.0
 
-            else:
-                vobj.u_d = 0.0
-
-        vobj.psi_d = np.arctan2(self.cGoal[1] - y,
-                                self.cGoal[0] - x)
+        if self.mode == 'waypoint' or self.mode == 'pursuit':
+            vobj.psi_d = np.arctan2(self.cGoal[1] - y,
+                                    self.cGoal[0] - x)
 
     def draw(self, axes, N, fcolor, ecolor):
         axes.plot(self.wps[:,0], self.wps[:,1], 'k--')

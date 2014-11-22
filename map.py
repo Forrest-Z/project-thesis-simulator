@@ -12,13 +12,12 @@ import time
 
 class Map(object):
     """This class provides a general map."""
-    def __init__(self, maptype=None, gridsize=1, safety_region_length=1.0):
+    def __init__(self, maptype=None, gridsize=1.0, safety_region_length=1.0):
         """Initialize map. Default map is blank 160x160m.'"""
         self._dim = [160, 160]
         self._obstacles = []
 
         if maptype=='s1':
-            self._dim = [160,160]
             self._obstacles = [Polygon([(41.44, 39.01),
                                         (32.78, 47.13),
                                         (29.09, 60.75),
@@ -51,8 +50,23 @@ class Map(object):
                                         (56.26, 28.22),
                                         (42.58, 19.27)], safety_region_length)]
 
+        if maptype == 's3':
+            self._obstacles = [Polygon([(0, 30),
+                                        (50, 30),
+                                        (60, 40),
+                                        (60, 50),
+                                        (50, 60),
+                                        (0, 60)], safety_region_length),
+                               Polygon([(100, 0),
+                                        (100, 20),
+                                        (120, 40),
+                                        (120, 80),
+                                        (130, 90),
+                                        (160, 90),
+                                        (160, 0)], safety_region_length)]
+
+
         if maptype == 'islands':
-            self._dim = [160, 160]
             self._obstacles = [Polygon([(30.76, 23.75),
                                         (51.92, 20.79),
                                         (63.32, 35.44),
@@ -70,7 +84,6 @@ class Map(object):
                                         (59.77, 94.64)],safety_region_length)]
         elif maptype == 'triangle':
             self._dim = [20, 20]
-
             self._obstacles = [Polygon([(1.5, 1.5),
                                         (18.5, 3.5),
                                         (10.7, 17.3)],safety_region_length)]
@@ -160,6 +173,8 @@ class Map(object):
                             # :todo: will this happen?
                             xnodes[i] = xmax
                         for j in np.arange(xnodes[i], xnodes[i+1], self._gridsize):
+                            if int(j*scale) >= self._discrete_dim[0] or int(gridY*scale) >= self._discrete_dim[1]:
+                                continue
                             self._grid[int(j*scale), int(gridY*scale)] = 1
 
         self._is_discretized = True
@@ -226,6 +241,13 @@ class Map(object):
         return points
 
     def is_occupied_discrete(self, point):
+        if isinstance(point, list):
+            for p in point:
+                if self.is_occupied_discrete(p):
+                    return True
+
+            return False
+
         if not self._is_discretized:
             self.discretize_map()
 

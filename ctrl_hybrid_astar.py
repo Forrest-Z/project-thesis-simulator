@@ -11,6 +11,8 @@ from utils import Controller, PriorityQueue
 
 from matplotlib2tikz import save as tikz_save
 
+import dubins
+
 BIGVAL = 10000.
 
 class HybridAStar(Controller):
@@ -26,11 +28,15 @@ class HybridAStar(Controller):
         self.to_be_updated = True
         self.path_found = False
 
+        self.gridsize = the_map.get_gridsize()
+
+        self.turning_radius = 20.0
+        self.step_size      = 1.5*the_map.get_gridsize()
+        self.dubins_expansion_constant = 50
+
     def update(self, vessel_object):
         if self.to_be_updated:
-            tic = time.clock()
             vessel_object.waypoints = self.search(vessel_object)
-            print "Hybrid A-star CPU time: %.3f" % ( time.clock() - tic)
             self.to_be_updated = False
             #self.map.disable_safety_region()
 
@@ -40,7 +46,8 @@ class HybridAStar(Controller):
     def search(self, vessel_object):
         """The Hybrid State A* search algorithm."""
 
-        # To clean up a bit
+        tic = time.clock()
+
         get_grid_id = self.graph.get_grid_id
 
         frontier = PriorityQueue()
@@ -51,10 +58,20 @@ class HybridAStar(Controller):
         came_from[tuple(self.start)] = None
         cost_so_far[get_grid_id(self.start)] = 0
 
-        path_found = False
+        dubins_path = False
+
+        num_nodes = 0
 
         while not frontier.empty():
             current = frontier.get()
+
+            if num_nodes % self.dubins_expansion_constant == 0:
+                dpath,_ = dubins.path_sample(current, self.goal, self.turning_radius, self.step_size)
+                if not self.map.is_occupied_discrete(dpath):
+                    # Success. Dubins expansion possible.
+                    self.path_found = True
+                    dubins_path = True
+                    break
 
             if np.linalg.norm(current[0:2] - self.goal[0:2]) < self.eps \
                and np.abs(current[2]-self.goal[2]) < np.pi/8:
@@ -71,13 +88,21 @@ class HybridAStar(Controller):
                     frontier.put(list(next), priority)
                     came_from[tuple(next)] = current
 
-
+            num_nodes += 1
         # Reconstruct path
         path = [current]
         while tuple(current) != tuple(self.start):
             current = came_from[tuple(current)]
             path.append(current)
-        return np.copy(np.asarray(path[::-2]))
+
+        if dubins_path:
+            path = np.array(path[::-2] + dpath)
+        else:
+            path = np.array(path[::-2])
+
+        print "Hybrid A-star CPU time: %.3f. Nodes expanded: %d" % ( time.clock() - tic, num_nodes)
+
+        return np.copy(path)
 
 def heuristic(a, b):
     """The search heuristics function."""
@@ -134,9 +159,9 @@ class SearchGrid(object):
 
         For the Viknes 830, the maximum rudder deflection is 15 deg.
         """
-        step_length = 1.5*self.gridsize[0]
+        step_length = 2.5*self.gridsize[0]
         avg_u       = 3.0
-        Radius      = 1.5*avg_u / est_r_max
+        Radius      = 2.5*avg_u / est_r_max
         dTheta      = step_length / Radius
         #print Radius, dTheta*180/np.pi
 

@@ -9,6 +9,7 @@ This module implements the Dynamic Window controller as proposed by Fox et. al.,
 
 import time, cProfile
 from matplotlib import pyplot as plt
+from matplotlib import cm
 
 import numpy as np
 import copy
@@ -20,11 +21,11 @@ from vessel import Vessel
 from utils import *
 
 class DynamicWindow(Controller):
-    def __init__(self, dT, N, gridsize=0.5):
+    def __init__(self, dT, N, the_map):
 
-        self.window_res = [5, 51]  # xy Dynamic Window resolution
-        self.xStride = gridsize
-        self.yStride = gridsize
+        self.window_res = [5, 41]  # xy Dynamic Window resolution
+        self.xStride = the_map.get_gridsize()
+        self.yStride = the_map.get_gridsize()
         self.dT = dT
         self.N  = N
         self.n  = 0
@@ -35,6 +36,8 @@ class DynamicWindow(Controller):
         self.dist_map        = np.zeros(self.window_res)
         self.scaled_dist_map = np.zeros(self.window_res)
 
+        self.final_heading = np.empty(self.window_res)
+        
         self.u_range = None
         self.r_range = None
 
@@ -52,13 +55,15 @@ class DynamicWindow(Controller):
         self.cur_uk = 5
         self.cur_rk = 8
 
+        self.axarr = None
+
         self.win_radius = 40
-        self.pred_horiz = 30
-        self.time_step  = 5
+        self.pred_horiz = 20
+        self.time_step  = 5.
         
-        self.alpha = 0.3#0.7
-        self.beta  = 0.2#0.2
-        self.gamma = 0.5#0.5
+        self.alpha = 0.4#0.7
+        self.beta  = 1#0.2
+        self.gamma = 1#0.5
 
         self.sigma = 0.0 # Low pass filter constant
 
@@ -66,20 +71,22 @@ class DynamicWindow(Controller):
          
         # :todo: Some circular logic here. Need set this after World object is
         # created, which depends on Vessel and Controller objects.
-        self.the_world = None
+        self.world = None
         self.last_update = -self.dT
         self.psi_target = None
 
-    def update(self, vessel_object):
 
-        x = vessel_object.x[0]
-        y = vessel_object.x[1]
-        psi = vessel_object.x[2]
-        u = vessel_object.x[3]  # body frame forward velocity
-        r = vessel_object.x[5]
 
-        self.psi_target = np.arctan2(vessel_object.goal[1] - y,
-                                     vessel_object.goal[0] - x)
+    def update(self, vobj):
+
+        x = vobj.x[0]
+        y = vobj.x[1]
+        psi = vobj.x[2]
+        u = vobj.x[3]  # body frame forward velocity
+        r = vobj.x[5]
+
+        self.psi_target = np.arctan2(vobj.current_goal[1] - y,
+                                     vobj.current_goal[0] - x)
         tic = time.clock()
 
 
@@ -90,41 +97,37 @@ class DynamicWindow(Controller):
         self.scaled_dist_map.fill(0)
 
         # Determine reachable surge velocities
-        u_rad_max = min(u + vessel_object.model.est_du_max * self.time_step,
-                        min(self.u_max, vessel_object.model.est_u_max))
-        u_rad_min = max(u + vessel_object.model.est_du_min * self.time_step,
-                        max(-self.u_max, vessel_object.model.est_u_min))
+        u_rad_max = min(u + vobj.model.est_du_max * self.time_step,
+                        min(self.u_max, vobj.model.est_u_max))
+        u_rad_min = max(u + vobj.model.est_du_min * self.time_step,
+                        max(0, vobj.model.est_u_min))
 
-        u_range = np.linspace(u_rad_max, u_rad_min, self.window_res[0])
+        self.u_range = np.linspace(u_rad_max, u_rad_min, self.window_res[0])
         
         # Determine reachable yaw velocities
-        r_rad_max = min(r + vessel_object.model.est_dr_max * self.time_step,
-                        vessel_object.model.est_r_max)
-        r_rad_min = max(r - vessel_object.model.est_dr_max * self.time_step,
-                        -vessel_object.model.est_r_max)
+        r_rad_max = min(r + vobj.model.est_dr_max * self.time_step,
+                        vobj.model.est_r_max)
+        r_rad_min = max(r - vobj.model.est_dr_max * self.time_step,
+                        -vobj.model.est_r_max)
+        
+        self.r_range = np.linspace(r_rad_max, r_rad_min, self.window_res[1])
 
-        r_range = np.linspace(r_rad_max, r_rad_min, self.window_res[1])
-
-        # print vessel_object.model.est_dr_max, vessel_object.model.est_r_max, r
+        # print vobj.model.est_dr_max, vobj.model.est_r_max, r
         # print r_rad_max, r_rad_min
         # print u_range
 
         # Calculate distance map
         for uk in range(0, self.window_res[0]):
-            u = u_range[uk]
+            u = self.u_range[uk]
 
             for rk in range(0, self.window_res[1]):
-                r = r_range[rk]
+                r = self.r_range[rk]
 
                 # Calculate distance map. The reachable points.
                 self.calc_dist_map(uk, rk, x, y, psi, u, r)
                 
                 # Calculate the dynamic window
-                self.calc_dyn_wind(uk, rk, x, y, psi, u, r,
-                                   vessel_object.model.est_du_max,
-                                   vessel_object.model.est_dr_max,
-                                   vessel_object.current_goal,
-                                   vessel_object.psi_d)
+                self.calc_dyn_wind(uk, rk, x, y, psi, u, r, vobj)
 
         # Normalize
         heading_min = np.amin(self.heading_map)
@@ -149,6 +152,15 @@ class DynamicWindow(Controller):
         else:
             self.scaled_dist_map  = (self.scaled_dist_map - dist_min) / float(dist_max - dist_min)
 
+
+        dist_min = np.amin(self.dist_map)
+        dist_max = np.amax(self.dist_map)
+        if dist_min == dist_max:
+            self.dist_map.fill(0)
+        else:
+            self.dist_map  = (self.dist_map - dist_min) / float(dist_max - dist_min)
+
+
         
         # Compose window
         self.window = self.sigma * self.window + \
@@ -163,9 +175,9 @@ class DynamicWindow(Controller):
 
         if self.window[uk_best, rk_best] <= 0:
             # No admissible choice. Break with full force.
-            vessel_object.psi_d = np.Inf
-            vessel_object.u_d = self.MAX_REVERSE_SP
-            vessel_object.r_d = 0
+            vobj.psi_d = np.Inf
+            vobj.u_d = self.MAX_REVERSE_SP
+            vobj.r_d = 0
 
             uk_best = self.cur_uk
             rk_best = self.cur_rk
@@ -174,10 +186,10 @@ class DynamicWindow(Controller):
 
         else:
             # Use best choice
-            vessel_object.psi_d = np.Inf
-            vessel_object.u_d = u_range[uk_best]
-            vessel_object.r_d = r_range[rk_best]
-            #print vessel_object.u_d, vessel_object.r_d
+            vobj.psi_d = np.Inf
+            vobj.u_d = self.u_range[uk_best]
+            vobj.r_d = self.r_range[rk_best]
+            #print vobj.u_d, vobj.r_d
             self.uk_best = uk_best
             self.rk_best = rk_best
             self.best_arches[self.n] = copy.deepcopy(self.current_arches[self.uk_best][self.rk_best])
@@ -200,7 +212,7 @@ class DynamicWindow(Controller):
             self.current_arches[uk][rk] = np.zeros((1,2))
             return
 
-        if np.abs(r) > 0.01:
+        if np.abs(r) > 0.0001:
             # The (u, r) circle is defined by:
             #    radius: u/r
             #    center: [x - (u/r)*sin(psi), y + (u/r)*cos(psi)]
@@ -264,7 +276,8 @@ class DynamicWindow(Controller):
             # Iterate along circle, testing for intersections
             alpha = beta
             max_dist = 0
-            path = np.empty((int(np.around(self.pred_horiz/step_time))+1, 2))
+            N = int(np.around(self.pred_horiz/step_time))+1
+            path = np.empty((N, 2))
             it = 0
             for t in np.arange(step_time, self.pred_horiz, step_time):
                 alpha += cstep
@@ -279,9 +292,9 @@ class DynamicWindow(Controller):
                     # Travelled full path
                     alpha = last_alpha
                     break
-                elif self.the_world.is_occupied(xk,
-                                                yk,
-                                                np.floor(t / self.dT)):
+
+                    # :TODO: FIKX ISDKFASDKFMASKDF
+                elif self.world.is_occupied(xk, yk, t):
                     # Intersection
                     break
 
@@ -290,6 +303,7 @@ class DynamicWindow(Controller):
 
                 max_dist += step_dist
 
+            self.final_heading[uk, rk] = alpha
             self.current_arches[uk][rk] = path[:(it)]
 
             # Update distance map with max distance along this path
@@ -328,9 +342,7 @@ class DynamicWindow(Controller):
                     # We are done
                     max_dist = 2*self.win_radius
                     break
-                elif self.the_world.is_occupied(xk,
-                                                yk,
-                                                t/self.dT):
+                elif self.world.is_occupied(xk, yk, t):
                     # Found intersection
                     break
                     
@@ -338,25 +350,27 @@ class DynamicWindow(Controller):
                 it += 1
 
                 max_dist += step_dist
-            
+
+            self.final_heading[uk, rk] = psi
             self.current_arches[uk][rk] = path[:(it)]
 
             # :todo: Draw/update paths
             self.scaled_dist_map[uk, rk] = max_dist / (2*self.win_radius)
             self.dist_map[uk, rk] = max_dist
         
-    def calc_dyn_wind(self, uk, rk, x, y, psi, u, r, est_du_max, est_dr_max, goal, psi_d):
+    def calc_dyn_wind(self, uk, rk, x, y, psi, u, r, vobj):
         dist = self.dist_map[uk, rk]
 
         # Only proceed if this is an admissible velocity, i.e.,
         # the vehicle can come to a complete stop after choosing
         # this alternative
-        if np.abs(u) > np.sqrt(2*dist * est_du_max) or \
-           np.abs(r) > np.sqrt(2*dist * est_dr_max):
+        if np.abs(u) > np.sqrt(2*dist * vobj.model.est_du_max) or \
+           np.abs(r) > np.sqrt(2*dist * vobj.model.est_dr_max):
             # Not admissible
             self.window[uk, rk] = 0
             self.heading_map[uk, rk] = 0
             self.velocity_map[uk, rk] = 0
+
         else:
             # The value of this sector in the dynamic window is
             # value = alpha*heading + beta*dist + gamma*velocity
@@ -364,7 +378,7 @@ class DynamicWindow(Controller):
             # The psi value should be calculated as the obtained psi
             # when applying maximum deceleration to the yaw after the
             # next time step.
-            psi_next   = psi + r*self.time_step + 0.5*r*np.abs(r/est_dr_max)
+            psi_next   = psi + r*self.time_step + 0.5*r*np.abs(r/vobj.model.est_dr_max)
             
             # :todo: Not working properly for now.
             # If psi_d is np.Inf, then it was set by DWA previously,
@@ -374,13 +388,30 @@ class DynamicWindow(Controller):
             #                             goal[0] - x)
             # else:
             #     psi_target = psi_d
-                
+
+            if np.abs(r) > 0.001:
+                x1 = x + u/r * (np.sin(psi) - np.sin(psi + r*self.dT))
+                y1 = y + u/r * (np.cos(psi) - np.cos(psi + r*self.dT))
+            else:
+                x1 = x + u * np.cos(psi) * self.dT
+                y1 = y + u * np.sin(psi) * self.dT
+
+            self.psi_target = np.arctan2(vobj.current_goal[1] - y1, #- self.current_arches[uk][rk][-1,1],
+                                         vobj.current_goal[0] - x1) #- self.current_arches[uk][rk][-1,0])
+
             # If in reverse, heading is the opposite
             if u < 0:
                 psi_next += np.pi
 
-            heading = np.pi - np.abs(normalize_angle(psi_next - self.psi_target, 0))
-            
+            while psi_next >= np.pi:
+                psi_next -= 2*np.pi
+
+            while psi_next < -np.pi:
+                psi_next += 2*np.pi
+
+
+            heading = np.pi - np.abs(psi_next - self.psi_target)
+
             self.velocity_map[uk, rk] = u
             self.heading_map[uk, rk] = heading
             
@@ -389,13 +420,44 @@ class DynamicWindow(Controller):
             axes.plot(self.best_arches[ii][:,0], self.best_arches[ii][:,1], 'r', alpha=0.5,
                       lw=2)
 
-    def visualize(self, axes, t, n):
+    def visualize(self, fig, axarr, t, n):
+        if n == 0:
+            # First run
+            # self.axarr = fig.add_subplots(4)
+            # self.axarr[0].contourf(self.r_range, self.u_range, self.window, cmap=plt.get_cmap('Greys'))
+            # self.axarr[1].contourf(self.r_range, self.u_range, self.heading_map, cmap=plt.get_cmap('Greys'))
+            # self.axarr[2].contourf(self.r_range, self.u_range, self.dist_map, cmap=plt.get_cmap('Greys'))
+            # self.axarr[3].contourf(self.r_range, self.u_range, self.velocity_map, cmap=plt.get_cmap('Greys'))
+
+            axarr[1].set_title("Combined Window")
+            axarr[2].set_title("Heading Map")
+            axarr[3].set_title("Distance Map")
+            axarr[4].set_title("Velocity Map")
+
+        X, Y = np.meshgrid(self.r_range, self.u_range)
+        # Visualize windows
+        for ii in range(1,5):
+            del axarr[ii].collections[:]
+
+        axarr[1].plot_wireframe(X, Y, self.window, rstride=1, cstride=1)
+        axarr[2].plot_wireframe(X, Y, self.heading_map, rstride=1, cstride=1)
+        axarr[3].plot_wireframe(X, Y, self.dist_map, rstride=1, cstride=1)
+        axarr[4].plot_wireframe(X, Y, self.velocity_map, rstride=1, cstride=1)
+        
+        #axarr[1].plot(self.r_range[self.rk_best], self.u_range[self.uk_best], 'rx', ms=10)
+
+        for rk in range(0, self.window_res[1]):
+            if rk == self.rk_best:
+                continue
+            axarr[0].plot(self.current_arches[self.uk_best][rk][:,0],
+                          self.current_arches[self.uk_best][rk][:,1], 'b', alpha=0.6)
+
         """Visualize current arch. For real-time plotting."""
-        axes.plot(self.best_arches[self.n-1][:,0],
-                  self.best_arches[self.n-1][:,1], 'r', alpha=0.5)
+        axarr[0].plot(self.best_arches[self.n-1][:,0],
+                      self.best_arches[self.n-1][:,1], 'r', alpha=0.8, lw=3)
 
 def test():
-    the_map = Map('s1')
+    the_map = Map()
     tic = time.clock()
     the_map.discretize_map()
     print time.clock() - tic
@@ -420,7 +482,18 @@ def test():
 
     myDynWnd.the_world = world
     
-    world.update_world(0,0, dT)
+    world.update_world(0,0)
+
+    fig = plt.figure()
+    ax  = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                          xlim=(-10, 160), ylim=(-10, 160))
+    
+    world.visualize(ax, 0, 0)
+    
+    plt.show()
+
+
+    
 
 
 def simple_scenario_with_plot():
@@ -467,5 +540,5 @@ def simple_scenario_with_plot():
 
 
 if __name__ == "__main__":
-    simple_scenario_with_plot()
-    #test()
+    #simple_scenario_with_plot()
+    test()
