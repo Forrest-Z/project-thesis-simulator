@@ -305,6 +305,35 @@ class Scenario(object):
 
             myDynWnd.world = self.world
 
+        elif name == 'hastar+dynwnd':
+            the_map = Map('s2', gridsize=1.0, safety_region_length=4.0)
+
+            self.tend = 100   # Simulation time (seconds)
+            self.h    = 0.05 # Integrator time step
+            self.dT   = 0.5  # Controller time step
+            self.N    = int(np.around(self.tend / self.h)) + 1
+
+            # Vessel 1 (Main vessel)
+            x01 = np.array([0.0, 0.0, 3.14/4, 2.5, 0, 0])
+            xg1 = np.array([80, 145, 0])
+
+            hastar   = HybridAStar(x01, xg1, the_map)
+            pp       = PurePursuit(mode='goal-switcher')
+            myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
+
+            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp, myDynWnd], is_main_vessel=True, vesseltype='viknes')
+
+
+            xo0 = np.array([50.,130,5*np.pi/4,0.0,0,0])
+            xog = np.array([250,110,0])
+
+
+            vobj2 = Vessel(xo0, xog, self.h, self.dT, self.N, [], is_main_vessel=False, vesseltype='hurtigruta')
+
+
+            self.world = World([vobj, vobj2], the_map)
+            myDynWnd.world = self.world
+
         elif name == 'cb-test':
             the_map = Map('', gridsize=1.0, safety_region_length=4.0)
 
@@ -484,9 +513,9 @@ def harry_anim(sim):
 
     ax2.grid()
 
-    #Writer = animation.writers['ffmpeg']
-    #writer = Writer(fps=33, metadata=dict(artist='Thomas Stenersen'), bitrate=1800)
-    #ani.save('head_on_situation.mp4', writer=writer)
+    Writer = animation.writers['ffmpeg']
+    writer = Writer(fps=33, metadata=dict(artist='Thomas Stenersen'), bitrate=1800)
+    ani.save('guided_dyn_wnd_2.mp4', writer=writer)
     plt.show()
 
 if __name__ == "__main__":
@@ -516,7 +545,7 @@ if __name__ == "__main__":
     sim.run_sim()
 
     plt.show()
-    #harry_plotter(sim)
+    #harry_anim(sim)
 
 
 

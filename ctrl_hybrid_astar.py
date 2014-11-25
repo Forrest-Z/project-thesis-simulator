@@ -43,6 +43,9 @@ class HybridAStar(Controller):
     def draw(self, axes, n, fcolor, ecolor):
         pass
 
+    def visualize(self, fig, axarr, t, n):
+        pass
+
     def search(self, vessel_object):
         """The Hybrid State A* search algorithm."""
 
@@ -104,6 +107,8 @@ class HybridAStar(Controller):
 
         return np.copy(path)
 
+
+
 def heuristic(a, b):
     """The search heuristics function."""
     return np.linalg.norm(a-b)
@@ -160,7 +165,7 @@ class SearchGrid(object):
         For the Viknes 830, the maximum rudder deflection is 15 deg.
         """
         step_length = 2.5*self.gridsize[0]
-        avg_u       = 3.0
+        avg_u       = 3.5
         Radius      = 2.5*avg_u / est_r_max
         dTheta      = step_length / Radius
         #print Radius, dTheta*180/np.pi

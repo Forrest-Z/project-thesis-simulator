@@ -61,7 +61,7 @@ class DynamicWindow(Controller):
         self.pred_horiz = 20
         self.time_step  = 5.
         
-        self.alpha = 0.4#0.7
+        self.alpha = .3#0.7
         self.beta  = 1#0.2
         self.gamma = 1#0.5
 
@@ -378,26 +378,17 @@ class DynamicWindow(Controller):
             # The psi value should be calculated as the obtained psi
             # when applying maximum deceleration to the yaw after the
             # next time step.
-            psi_next   = psi + r*self.time_step + 0.5*r*np.abs(r/vobj.model.est_dr_max)
-            
-            # :todo: Not working properly for now.
-            # If psi_d is np.Inf, then it was set by DWA previously,
-            # else it is set by LOS and we should weigh accordingly
-            # if psi_d == np.Inf:
-            #     psi_target = np.arctan2(goal[1] - y,
-            #                             goal[0] - x)
-            # else:
-            #     psi_target = psi_d
+            psi_next   = psi + r*self.dT + 0.5*r*np.abs(r/vobj.model.est_dr_max)
 
             if np.abs(r) > 0.001:
                 x1 = x + u/r * (np.sin(psi) - np.sin(psi + r*self.dT))
-                y1 = y + u/r * (np.cos(psi) - np.cos(psi + r*self.dT))
+                y1 = y - u/r * (np.cos(psi) - np.cos(psi + r*self.dT))
             else:
                 x1 = x + u * np.cos(psi) * self.dT
                 y1 = y + u * np.sin(psi) * self.dT
 
-            self.psi_target = np.arctan2(vobj.current_goal[1] - y1, #- self.current_arches[uk][rk][-1,1],
-                                         vobj.current_goal[0] - x1) #- self.current_arches[uk][rk][-1,0])
+            self.psi_target = np.arctan2(vobj.current_goal[1] - y1,#self.current_arches[uk][rk][-1,1],
+                                         vobj.current_goal[0] - x1)#self.current_arches[uk][rk][-1,0])
 
             # If in reverse, heading is the opposite
             if u < 0:
@@ -430,19 +421,31 @@ class DynamicWindow(Controller):
             # self.axarr[3].contourf(self.r_range, self.u_range, self.velocity_map, cmap=plt.get_cmap('Greys'))
 
             axarr[1].set_title("Combined Window")
+            axarr[1].set_xlabel("r")
+            axarr[1].set_ylabel("u")
+            axarr[2].set_xlabel("r")
+            axarr[2].set_ylabel("u")
+            axarr[3].set_xlabel("r")
+            axarr[3].set_ylabel("u")
+            axarr[4].set_xlabel("r")
+            axarr[4].set_ylabel("u")
+            
+            
             axarr[2].set_title("Heading Map")
             axarr[3].set_title("Distance Map")
             axarr[4].set_title("Velocity Map")
+
+
 
         X, Y = np.meshgrid(self.r_range, self.u_range)
         # Visualize windows
         for ii in range(1,5):
             del axarr[ii].collections[:]
 
-        axarr[1].plot_wireframe(X, Y, self.window, rstride=1, cstride=1)
-        axarr[2].plot_wireframe(X, Y, self.heading_map, rstride=1, cstride=1)
-        axarr[3].plot_wireframe(X, Y, self.dist_map, rstride=1, cstride=1)
-        axarr[4].plot_wireframe(X, Y, self.velocity_map, rstride=1, cstride=1)
+        axarr[1].plot_surface(X, Y, self.window, rstride=1, cstride=4, cmap=plt.get_cmap("coolwarm"))
+        axarr[2].plot_surface(X, Y, self.heading_map, rstride=1, cstride=4, cmap=plt.get_cmap("coolwarm"))
+        axarr[3].plot_surface(X, Y, self.scaled_dist_map, rstride=1, cstride=4, cmap=plt.get_cmap("coolwarm"))
+        axarr[4].plot_surface(X, Y, self.velocity_map, rstride=1, cstride=4, cmap=plt.get_cmap("coolwarm"))
         
         #axarr[1].plot(self.r_range[self.rk_best], self.u_range[self.uk_best], 'rx', ms=10)
 

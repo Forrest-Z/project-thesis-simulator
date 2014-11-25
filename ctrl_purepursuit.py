@@ -10,6 +10,8 @@ class PurePursuit(Controller):
         self.nWP   = 0
         self.is_initialized = False
 
+        self.iterator = 1
+
         self.R2   = R2
         self.mode = mode
 
@@ -28,7 +30,7 @@ class PurePursuit(Controller):
                 self.cGoal = self.wps[self.cWP]
                 vobj.current_goal = self.cGoal
                 self.nWP = len(self.wps)
-
+                self.iterator = int(self.nWP/20) + 1
             self.is_initialized = True
 
 
@@ -37,8 +39,8 @@ class PurePursuit(Controller):
 
         if not self.mode == 'pursuit':
             if (x - self.cGoal[0])**2 + (y - self.cGoal[1])**2 < self.R2:
-                if self.cWP < self.nWP - 1:
-                    self.cWP += 1
+                if self.cWP < self.nWP - self.iterator:
+                    self.cWP += self.iterator
                     self.cGoal = self.wps[self.cWP]
                     vobj.current_goal = np.copy(self.cGoal)
                 else:
@@ -51,3 +53,7 @@ class PurePursuit(Controller):
     def draw(self, axes, N, fcolor, ecolor):
         axes.plot(self.wps[:,0], self.wps[:,1], 'k--')
 
+    def visualize(self, fig, axarr, t, n):
+        if self.mode == 'goal-switcher':
+            axarr[0].plot(self.wps[:,0], self.wps[:,1], 'k--')
+            axarr[0].plot(self.cGoal[0], self.cGoal[1], 'rx', ms=10)

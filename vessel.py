@@ -185,6 +185,7 @@ class Vessel(object):
                             edgecolor='k')
             axarr[0].add_patch(circle)
             axarr[0].annotate('Goal', xy=(self.goal[0], self.goal[1]), xytext=(self.goal[0]+5, self.goal[1]-5))
+            axarr[0].plot(self.path[:n,0], self.path[:n,1], 'b--')
 
 
 
