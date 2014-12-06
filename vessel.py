@@ -14,6 +14,7 @@ class Vessel(object):
     """General vessel class."""
     def __init__(self, x0, xg, h, dT, N, controllers, is_main_vessel=False, vesseltype='revolt'):
 
+        self.world = None # Is set in World.__init__()
 
         self.controllers    = controllers          # List of controllers (A*, LOS, etc.)
         self.is_main_vessel = is_main_vessel       # Is this our main vessel?
@@ -84,6 +85,10 @@ class Vessel(object):
 
         self.x  = self.model.x # This is a numpy array -> will be a reference :D
 
+    def save_data(self, n, filename):
+        np.savetxt(filename + '.txt', self.path[:n], delimiter='\t')
+        np.save(filename, self.path[:n])
+
     def get_shape(self):
         return np.copy(self._shape)
 
@@ -104,6 +109,24 @@ class Vessel(object):
         """Updates all the vessels controllers."""
         for ctrl in self.controllers:
             ctrl.update(self)
+
+    def get_simulation_data(self, n):
+        """Returns a list of various simulation data (path length, power usage, etc.) """
+        if n < 1:
+            return []
+
+        # Calculate length of path traveled
+        e = self.path[1:n,0:2] - self.path[0:n-1,0:2]
+        # Sum of L2-norm along each row
+        length = np.sum( np.sum(np.abs(e)**2,axis=-1)**(1./2) )
+
+        Velocity = np.sum(np.abs(self.path[0:n, 3:5])**2, axis=-1) ** (1./2)
+        avgVel = np.mean(Velocity, dtype=np.float64)
+        varVel = np.var(Velocity, dtype=np.float64)
+
+        varPsi = np.var(self.path[:n,2], dtype=np.float64)
+
+        return [length, avgVel, varVel, varPsi]
 
     def draw_collision(self, axes, n):
         """Draws a red X at the point of collision."""

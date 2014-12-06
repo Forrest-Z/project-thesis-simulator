@@ -4,7 +4,7 @@ import numpy as np
 from utils import Controller
 
 class PurePursuit(Controller):
-    def __init__(self, R2=50, mode='waypoint'):
+    def __init__(self, R2=60, mode='waypoint'):
         self.cGoal = None # Current Goal
         self.cWP   = 0    # Used if waypoint-navigation
         self.nWP   = 0
@@ -22,15 +22,19 @@ class PurePursuit(Controller):
             # Reference to the vessel object's waypoints
             self.wps = vobj.waypoints
             if self.mode == 'waypoint':
+                self.cWP   = 0
                 self.cGoal = self.wps[self.cWP]
                 self.nWP   = len(self.wps)
                 vobj.u_d   = 3.0
+                vobj.current_goal = np.copy(self.cGoal)
 
             elif self.mode == 'goal-switcher':
+                self.cWP = 0
                 self.cGoal = self.wps[self.cWP]
-                vobj.current_goal = self.cGoal
+                vobj.current_goal = np.copy(self.cGoal)
                 self.nWP = len(self.wps)
                 self.iterator = int(self.nWP/20) + 1
+
             self.is_initialized = True
 
 
@@ -38,13 +42,15 @@ class PurePursuit(Controller):
         y = vobj.x[1]
 
         if not self.mode == 'pursuit':
-            if (x - self.cGoal[0])**2 + (y - self.cGoal[1])**2 < self.R2:
+            while (x - self.cGoal[0])**2 + (y - self.cGoal[1])**2 < self.R2:
                 if self.cWP < self.nWP - self.iterator:
                     self.cWP += self.iterator
                     self.cGoal = self.wps[self.cWP]
-                    vobj.current_goal = np.copy(self.cGoal)
                 else:
                     vobj.u_d = 0.0
+                    break
+            vobj.current_goal = np.copy(self.cGoal)
+
 
         if self.mode == 'waypoint' or self.mode == 'pursuit':
             vobj.psi_d = np.arctan2(self.cGoal[1] - y,
@@ -54,6 +60,6 @@ class PurePursuit(Controller):
         axes.plot(self.wps[:,0], self.wps[:,1], 'k--')
 
     def visualize(self, fig, axarr, t, n):
-        if self.mode == 'goal-switcher':
+        if self.mode == 'goal-switcher' or self.mode == 'waypoint':
             axarr[0].plot(self.wps[:,0], self.wps[:,1], 'k--')
             axarr[0].plot(self.cGoal[0], self.cGoal[1], 'rx', ms=10)

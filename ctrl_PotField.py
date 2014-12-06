@@ -19,12 +19,11 @@ from utils import *
 class PotentialFields(Controller):
     def __init__(self, the_map, N):
         self.goal   = None
-        self.world  = None
 
-        self.mu = 40.
-        self.d_max = 50.
-        self.k = 25.
-        self.xi = 0.6
+        self.mu = 300.
+        self.d_max = 70
+        self.k = 40.
+        self.xi = 0.4
         self.u_max = 3.0
         self.u_min = 2.0
         self.map_res = the_map.get_gridsize()
@@ -41,8 +40,6 @@ class PotentialFields(Controller):
         self.n = 0
 
     def update(self, v_obj):
-        if not self.world:
-            print "Need to configure World() in potential field controller!"
 
         self.goal = v_obj.current_goal
 
@@ -60,7 +57,7 @@ class PotentialFields(Controller):
         ymax = aligned_y + self.d_max
 
         # Calculate virtual force
-        self.get_virtual_force(v_obj.x, xmin, ymin, xmax, ymax)
+        self.get_virtual_force(v_obj.x, xmin, ymin, xmax, ymax, vobj)
 
         # Apply force to boat
         self.F = self.Fo + self.Fa
@@ -82,14 +79,14 @@ class PotentialFields(Controller):
         self.xy[self.n] = np.copy(v_obj.x[0:2])
         self.n += 1
 
-    def get_virtual_force(self, xvec, xmin, ymin, xmax, ymax):
+    def get_virtual_force(self, xvec, xmin, ymin, xmax, ymax, vobj):
 
         d_max_sq = self.d_max**2
 
         for x in np.arange(xmin, xmax, self.x_stride):
             for y in np.arange(ymin, ymax, self.y_stride):
 
-                if self.world.is_occupied(x, y):
+                if vobj.world.is_occupied(x, y):
                     rho_sq = (x - xvec[0])**2 + (y - xvec[1])**2
 
                     if rho_sq < d_max_sq:
@@ -109,18 +106,31 @@ class PotentialFields(Controller):
         dx = xvec[3]*cos_psi - xvec[4]*sin_psi
         dy = xvec[3]*sin_psi + xvec[4]*cos_psi
 
-
-        e = np.array([self.goal[0] - xvec[0],
-                      self.goal[1] - xvec[1]])
+        # e = x - xd
+        e = np.array([xvec[0] - self.goal[0],
+                      xvec[1] - self.goal[1]])
 
 
         enorm = np.linalg.norm(e)
 
         if (self.k/self.xi)*enorm <= self.u_max:
-            self.Fa = - (self.xi * np.array([dx, dy]) - self.k*e)
+            self.Fa = - self.xi * np.array([dx, dy]) - self.k*e
         else:
-            self.Fa = - (self.xi * np.array([dx, dy]) - (self.xi*self.u_max/enorm)*e)
+            self.Fa = - self.xi * np.array([dx, dy]) - (self.u_max/enorm)*e
 
+    def visualize(self, fig, axarr, t, n):
+        axarr[0].arrow(self.xy[self.n-1,0],
+                       self.xy[self.n-1,1],
+                       self.F[0]*5,
+                       self.F[1]*5, width=0.1, fc='b', ec='b')#, alpha=0.5)
+        axarr[0].arrow(self.xy[self.n-1,0],
+                       self.xy[self.n-1,1],
+                       self.Fo[0]*5,
+                       self.Fo[1]*5, width=0.1, fc='r', ec='r', alpha=0.5)
+        axarr[0].arrow(self.xy[self.n-1,0],
+                       self.xy[self.n-1,1],
+                       self.Fa[0]*5,
+                       self.Fa[1]*5, width=0.1, fc='g', ec='g', alpha=0.5)
 
     def draw(self, axes, N, fcolor, ecolor):
         for ii in range(0, self.n, 16):

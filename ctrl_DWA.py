@@ -23,7 +23,7 @@ from utils import *
 class DynamicWindow(Controller):
     def __init__(self, dT, N, the_map):
 
-        self.window_res = [5, 41]  # xy Dynamic Window resolution
+        self.window_res = [5, 61]  # xy Dynamic Window resolution
         self.xStride = the_map.get_gridsize()
         self.yStride = the_map.get_gridsize()
         self.dT = dT
@@ -71,7 +71,7 @@ class DynamicWindow(Controller):
          
         # :todo: Some circular logic here. Need set this after World object is
         # created, which depends on Vessel and Controller objects.
-        self.world = None
+
         self.last_update = -self.dT
         self.psi_target = None
 
@@ -124,7 +124,7 @@ class DynamicWindow(Controller):
                 r = self.r_range[rk]
 
                 # Calculate distance map. The reachable points.
-                self.calc_dist_map(uk, rk, x, y, psi, u, r)
+                self.calc_dist_map(uk, rk, x, y, psi, u, r, vobj)
                 
                 # Calculate the dynamic window
                 self.calc_dyn_wind(uk, rk, x, y, psi, u, r, vobj)
@@ -204,7 +204,7 @@ class DynamicWindow(Controller):
 
         #print r_range, self.rk_best
         
-    def calc_dist_map(self, uk, rk, x, y, psi, u, r):
+    def calc_dist_map(self, uk, rk, x, y, psi, u, r, vobj):
         if np.abs(u) < 0.01:
             # No disatance
             self.scaled_dist_map[uk, rk] = 0
@@ -294,7 +294,7 @@ class DynamicWindow(Controller):
                     break
 
                     # :TODO: FIKX ISDKFASDKFMASKDF
-                elif self.world.is_occupied(xk, yk, t):
+                elif vobj.world.is_occupied(xk, yk, t):
                     # Intersection
                     break
 
@@ -342,7 +342,7 @@ class DynamicWindow(Controller):
                     # We are done
                     max_dist = 2*self.win_radius
                     break
-                elif self.world.is_occupied(xk, yk, t):
+                elif vobj.world.is_occupied(xk, yk, t):
                     # Found intersection
                     break
                     

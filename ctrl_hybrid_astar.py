@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 
 from map import Map
 from vessel import Vessel
-from utils import Controller, PriorityQueue
-
+from utils import Controller, PriorityQueue, eucledian_path_length
 from matplotlib2tikz import save as tikz_save
 
 import dubins
@@ -16,16 +15,18 @@ import dubins
 BIGVAL = 10000.
 
 class HybridAStar(Controller):
-    def __init__(self, x0, xg, the_map):
+    def __init__(self, x0, xg, the_map, replan=False):
         self.start = x0[0:3]
         self.goal  = xg[0:3]
 
-        self.graph = SearchGrid(the_map, [1.0, 1.0, 25.0/360.0], N=3)
+        self.world = None
 
+        self.graph = SearchGrid(the_map, [1.0, 1.0, 25.0/360.0], N=3, parent=self)
         # :todo: Should be the_world?
         self.map = the_map
         self.eps = 5.0
         self.to_be_updated = True
+        self.replan = replan
         self.path_found = False
 
         self.gridsize = the_map.get_gridsize()
@@ -36,7 +37,9 @@ class HybridAStar(Controller):
 
     def update(self, vessel_object):
         if self.to_be_updated:
+
             vessel_object.waypoints = self.search(vessel_object)
+            vessel_object.controllers[1].is_initialized = False
             self.to_be_updated = False
             #self.map.disable_safety_region()
 
@@ -46,7 +49,7 @@ class HybridAStar(Controller):
     def visualize(self, fig, axarr, t, n):
         pass
 
-    def search(self, vessel_object):
+    def search(self, vobj):
         """The Hybrid State A* search algorithm."""
 
         tic = time.clock()
@@ -81,7 +84,7 @@ class HybridAStar(Controller):
                 self.path_found = True
                 break
 
-            for next in self.graph.neighbors(current, vessel_object.model.est_r_max):
+            for next in self.graph.neighbors(current, vobj.model.est_r_max):
                 new_cost = cost_so_far[get_grid_id(current)] + \
                            self.graph.cost(current, next)
 
@@ -99,14 +102,14 @@ class HybridAStar(Controller):
             path.append(current)
 
         if dubins_path:
-            path = np.array(path[::-2] + dpath)
+            path = np.array(path[::-1] + dpath)
         else:
             path = np.array(path[::-2])
 
         print "Hybrid A-star CPU time: %.3f. Nodes expanded: %d" % ( time.clock() - tic, num_nodes)
+        #print self.start
 
         return np.copy(path)
-
 
 
 def heuristic(a, b):
@@ -115,7 +118,7 @@ def heuristic(a, b):
 
 class SearchGrid(object):
     """General purpose N-dimentional search grid."""
-    def __init__(self, the_map, gridsize, N=2):
+    def __init__(self, the_map, gridsize, N=2, parent=None):
         self.N        = N
         self.grid     = the_map.get_discrete_grid()
         self.map      = the_map
@@ -152,6 +155,7 @@ class SearchGrid(object):
     def passable(self, state):
         # TODO Rename or change? Only returns true if object is _inside_ obstacle
         # Polygons add safety zone by default now.
+
         if state[0] > self.width or state[1] > self.height:
             return True
 

@@ -104,8 +104,6 @@ class Scenario(object):
 
             self.world = World([v1], the_map)
 
-            myDynWnd.the_world = self.world
-
         elif name == 's1-potfield':
             the_map = Map('s1', gridsize=0.5, safety_region_length=4.0)
 
@@ -166,7 +164,7 @@ class Scenario(object):
         elif name=='s2-potfield':
             the_map = Map('s2', gridsize=1.0, safety_region_length=4.0)
 
-            self.tend = 80.0
+            self.tend = 150.0
             self.dT   = 0.5
             self.h    = 0.05
             self.N    = int(np.around(self.tend/self.h)) + 1
@@ -193,14 +191,12 @@ class Scenario(object):
             x01 = np.array([0.0, 0.0, 0.0, 2.5, 0, 0])
             xg1 = np.array([140, 140, 0])
 
-            myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1)
+            myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
 
             v1 = Vessel(x01, xg1, self.h, self.dT, self.N, [myDynWnd], is_main_vessel=True, vesseltype='viknes')
             v1.goal = np.array([140, 140, 0])
 
             self.world = World([v1], the_map)
-
-            myDynWnd.the_world = self.world
 
         elif name=='s2-astar':
             the_map = Map('s2', gridsize=2.0, safety_region_length=4.0)
@@ -241,31 +237,30 @@ class Scenario(object):
             self.world = World([vobj], the_map)
 
         elif name=='s3-potfield':
-            the_map = Map('s1', gridsize=1.0, safety_region_length=4.0)
+            the_map = Map('', gridsize=1.0, safety_region_length=4.0)
+            self.tend = 120   # Simulation time (seconds)
+            self.h    = 0.05 # Integrator time step
+            self.dT   = 0.5  # Controller time step
+            self.N    = int(np.around(self.tend / self.h)) + 1
+            N2        = int(self.tend/self.dT) + 1
 
-            self.tend = 140.0
-            self.dT   = 0.5
-            self.h    = 0.05
-            self.N    = int(np.around(self.tend/self.h)) + 1
-
-            N2   = int(np.around(self.tend/self.dT)) + 1
-            x0   = np.array([0, 0, 0, 2.5, 0, 0])
-            xg   = np.array([140, 140, 0])
+            # Vessel 1 (Main vessel)
+            x01 = np.array([60.0, 0.0, 3.14/4, 2.5, 0, 0])
+            xg1 = np.array([80, 145, 0])
 
             potfield = PotentialFields(the_map, N2)
-            vobj = Vessel(x0, xg, self.h, self.dT, self.N, [potfield], is_main_vessel=True, vesseltype='viknes')
+            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [potfield], is_main_vessel=True, vesseltype='viknes')
 
-            # Other vessel
-            xo0 = np.array([0,120,0,2.5,0,0])
-            xog = np.array([140,0,0])
+            # Follower
+            x0f = np.array([120.,110,-np.pi,1.5,0,0])
+            xgf = np.array([250,110,0])
 
-            los = LOSGuidance()
-            vobj2 = Vessel(xo0, xog, self.h, self.dT, self.N, [los], is_main_vessel=False, vesseltype='viknes')
-            vobj2.waypoints = np.array([[0,120], [60,120], [90, 0], [140,0]])
+            pp = PurePursuit(mode='pursuit')
+            pp.cGoal = vobj.x
+            vobj3 = Vessel(x0f, xgf, self.h, self.dT, self.N, [pp], is_main_vessel=False, vesseltype='viknes')
+            vobj3.u_d = 2.5
 
-            self.world = World([vobj, vobj2], the_map)
-
-            potfield.world = self.world
+            self.world = World([vobj, vobj3], the_map)
 
         elif name == 's3-dynwnd':
             the_map = Map('', gridsize=1.0, safety_region_length=4.0)
@@ -275,25 +270,19 @@ class Scenario(object):
             self.dT   = 0.5  # Controller time step
             self.N    = int(np.around(self.tend / self.h)) + 1
 
+            N2        = int(self.tend/self.dT) + 1
+
             # Vessel 1 (Main vessel)
-            x01 = np.array([60.0, 0.0, 3.14/4, 2.5, 0, 0])
+            x01 = np.array([100.0, 0.0, 3.14/4, 2.5, 0, 0])
             xg1 = np.array([80, 145, 0])
 
-            myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
+            myDynWnd = DynamicWindow(self.dT, N2, the_map)
 
             vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [myDynWnd], is_main_vessel=True, vesseltype='viknes')
             #v1.goal = np.array([140, 140, 0])
 
-            # Other vessel
-            xo0 = np.array([40.,60,-np.pi/4,1.5,0,0])
-            xog = np.array([250,110,0])
-
-            cb  = ConstantBearing(vobj.x)
-            vobj2 = Vessel(xo0, xog, self.h, self.dT, self.N, [cb], is_main_vessel=False, vesseltype='hurtigruta')
-            #vobj2.waypoints = np.array([[0,100], [150,110]])
-
             # Follower
-            x0f = np.array([100.,140,-np.pi,1.5,0,0])
+            x0f = np.array([120.,110,-np.pi,1.5,0,0])
             xgf = np.array([250,110,0])
 
             pp = PurePursuit(mode='pursuit')
@@ -301,9 +290,69 @@ class Scenario(object):
             vobj3 = Vessel(x0f, xgf, self.h, self.dT, self.N, [pp], is_main_vessel=False, vesseltype='viknes')
             vobj3.u_d = 2.5
 
-            self.world = World([vobj, vobj2, vobj3], the_map)
+            self.world = World([vobj, vobj3], the_map)
 
-            myDynWnd.world = self.world
+        elif name == 's3-astar':
+            the_map = Map('', gridsize=1.0, safety_region_length=4.0)
+
+            self.tend = 80   # Simulation time (seconds)
+            self.h    = 0.05 # Integrator time step
+            self.dT   = 0.5  # Controller time step
+            self.N    = int(np.around(self.tend / self.h)) + 1
+
+            N2        = int(self.tend/self.dT) + 1
+
+            # Vessel 1 (Main vessel)
+            x01 = np.array([100.0, 0.0, 3.14/4, 2.5, 0, 0])
+            xg1 = np.array([80, 145, 0])
+
+            astar = AStar(x01,xg1,the_map)
+            pp    = PurePursuit(R2=50)
+
+            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [astar, pp], is_main_vessel=True, vesseltype='viknes')
+            #v1.goal = np.array([140, 140, 0])
+
+            # Follower
+            x0f = np.array([120.,110,-np.pi,1.5,0,0])
+            xgf = np.array([250,110,0])
+
+            pp = PurePursuit(mode='pursuit')
+            pp.cGoal = vobj.x
+            vobj3 = Vessel(x0f, xgf, self.h, self.dT, self.N, [pp], is_main_vessel=False, vesseltype='viknes')
+            vobj3.u_d = 2.5
+
+            self.world = World([vobj, vobj3], the_map)
+
+        elif name == 's3-hybridastar':
+            the_map = Map('', gridsize=1.0, safety_region_length=4.0)
+
+            self.tend = 80   # Simulation time (seconds)
+            self.h    = 0.05 # Integrator time step
+            self.dT   = 0.5  # Controller time step
+            self.N    = int(np.around(self.tend / self.h)) + 1
+
+            N2        = int(self.tend/self.dT) + 1
+
+            # Vessel 1 (Main vessel)
+            x01 = np.array([100.0, 0.0, 3.14/4, 2.5, 0, 0])
+            xg1 = np.array([80, 145, 3.14/2])
+
+            hastar = HybridAStar(x01,xg1,the_map, replan=True)
+            pp    = PurePursuit(R2=50, mode="waypoint")
+
+            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp], is_main_vessel=True, vesseltype='viknes')
+            #v1.goal = np.array([140, 140, 0])
+
+            # Follower
+            x0f = np.array([120.,110,-np.pi,1.5,0,0])
+            xgf = np.array([250,110,0])
+
+            pp = PurePursuit(mode='pursuit')
+            pp.cGoal = vobj.x
+            vobj3 = Vessel(x0f, xgf, self.h, self.dT, self.N, [pp], is_main_vessel=False, vesseltype='viknes')
+            vobj3.u_d = 2.5
+
+            self.world = World([vobj, vobj3], the_map)
 
         elif name == 'hastar+dynwnd':
             the_map = Map('s2', gridsize=1.0, safety_region_length=4.0)
@@ -320,6 +369,10 @@ class Scenario(object):
             hastar   = HybridAStar(x01, xg1, the_map)
             pp       = PurePursuit(mode='goal-switcher')
             myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
+
+            myDynWnd.alpha = 1.
+            myDynWnd.beta  = .2
+            myDynWnd.gamma = .3
 
             vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp, myDynWnd], is_main_vessel=True, vesseltype='viknes')
 
@@ -538,14 +591,14 @@ if __name__ == "__main__":
               fig.add_subplot(gs[1, 3], projection='3d')]
         #axarr[ii+1].set_aspect('equal')
 
-    scen = Scenario('s3-dynwnd')
-    #sim  = Simulation(scen)
+    scen = Scenario('s1-dynwnd')
+    #sim  = Simulation(scen, savedata=True)
     sim  = Simulation(scen, fig, axarr)
 
     sim.run_sim()
 
     plt.show()
-    #harry_anim(sim)
+    #harry_plotter(sim)
 
 
 

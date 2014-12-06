@@ -11,6 +11,10 @@ from matplotlib2tikz import save as tikz_save
 class World(object):
     def __init__(self, vessels, the_map):
         self._vessels = vessels
+
+        for v in self._vessels:
+            v.world = self
+
         self._map = the_map
 
         self._is_collided = False
@@ -21,15 +25,24 @@ class World(object):
     def get_discrete_grid(self):
         return self._map.get_discrete_grid()
 
+    def get_simulation_data(self, n):
+        return self._vessels[0].get_simulation_data(n)
+
+    def save_data(self, n, filename):
+        self._vessels[0].save_data(n, filename)
+
     def update_world(self, t, n):
         for v in self._vessels:
             v.time = t
             v.update_model(n)
             if int(t*100)%int(v.dT*100) == 0:
-                #print "Sim time: %.2f \tVessel position: (%.2f, %.2f, %.2f)." % (t, v.x[0],
-                #                                                                 v.x[1],
-                #                                                                 v.x[2]*180/np.pi)
                 v.update_controllers()
+
+    def is_occupied_list(self, lst, tlst):
+        for ii in range(0,len(lst)):
+            if self.is_occupied(lst[ii][0],lst[ii][1],tlst[ii]):
+                return True
+        return False
 
     def is_occupied(self, x, y, t=0.):
         """Is the point (x,y) occupied at time t?"""
@@ -144,6 +157,9 @@ class World(object):
 
             plt.draw()
             plt.pause(0.001)
+
+            #print self.get_simulation_data(n)
+
             cmd = raw_input('Iteration: %d. Hit ENTER to continue... (s for save)'%n)
             if cmd == 's':
                 fig.savefig('simt-step-t-' + str(t) + '.pdf', dpi=600, format='pdf', bbox_inches='tight')

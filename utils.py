@@ -29,6 +29,18 @@ class Controller(object):
     def visualize(self, fig, axes, t, n):
         pass
 
+
+def eucledian_path_length(path):
+    """
+    Calculates the Eucledian length of a 2D path.
+
+    The input is assumed to be a numpy array.
+    """
+    # Calculate length of path traveled
+    e = path[1:,0:2] - path[0:-1,0:2]
+    # Sum of L2-norm along each row
+    length = np.sum( np.sum(np.abs(e)**2,axis=-1)**(1./2) )
+    return length
 def normalize_angle(angle, angle_ref):
     """
     Makes 'angle' compatible with 'angle_ref' such that the numerical

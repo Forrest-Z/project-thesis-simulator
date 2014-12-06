@@ -19,7 +19,7 @@ class Simulation(object):
         tend       (float): The end time of the simulation (default 100)
 
     """
-    def __init__(self, scenario, fig=None, axarr=None):
+    def __init__(self, scenario, fig=None, axarr=None, savedata=False):
         """Initializes the simulation."""
         self.scenario = scenario
 
@@ -32,6 +32,7 @@ class Simulation(object):
 
         self._end_reason = "SimOK"
 
+        self.savedata = savedata
     def run_sim(self):
         """Runs the simulation."""
 
@@ -60,7 +61,20 @@ class Simulation(object):
 
             self.n += 1
 
-        print "Total simulation CPU time: %.3f"%(time.clock() - tic)
+        arr = [t, time.clock()-tic]
+        #print "Total simulation CPU time: %.3f"%(time.clock() - tic)
+        arr = self.scenario.world.get_simulation_data(self.n) + arr
+
+        print "Distance\tAvgVel\tVarVel\tVarPsi\tTime\tCPU Time"
+        s = '\t'.join(format(x,".4f") for x in arr)
+        print s
+
+        if self.savedata:
+            self.scenario.world.save_data(self.n, self.scenario.name + '-vessel')
+            metadata = [t, time.clock()-tic]
+            np.savetxt(self.scenario.name + '-metadata.txt', np.array(metadata), delimiter='\t')
+
+
         if self.axarr:
             raw_input("SIMULATION COMPLETE! Hit enter to exit")
 
