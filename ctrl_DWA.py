@@ -421,14 +421,19 @@ class DynamicWindow(Controller):
             # self.axarr[3].contourf(self.r_range, self.u_range, self.velocity_map, cmap=plt.get_cmap('Greys'))
 
             axarr[1].set_title("Combined Window")
-            axarr[1].set_xlabel("r")
-            axarr[1].set_ylabel("u")
-            axarr[2].set_xlabel("r")
-            axarr[2].set_ylabel("u")
-            axarr[3].set_xlabel("r")
-            axarr[3].set_ylabel("u")
-            axarr[4].set_xlabel("r")
-            axarr[4].set_ylabel("u")
+
+            for ii in range(1,5):
+                axarr[ii].set_xlabel("r")
+                axarr[ii].set_ylabel("u")
+                axarr[ii].set_xticklabels([])
+                axarr[ii].set_yticklabels([])
+                axarr[ii].set_zticklabels([])
+            # axarr[2].set_xlabel("r")
+            # axarr[2].set_ylabel("u")
+            # axarr[3].set_xlabel("r")
+            # axarr[3].set_ylabel("u")
+            # axarr[4].set_xlabel("r")
+            # axarr[4].set_ylabel("u")
             
             
             axarr[2].set_title("Heading Map")

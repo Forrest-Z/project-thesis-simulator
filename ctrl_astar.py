@@ -126,10 +126,10 @@ class SearchGrid(object):
 
 
 if __name__ == "__main__":
-    mymap = Map("s1", gridsize=1.0, safety_region_length=4.5)
+    mymap = Map("s2", gridsize=1.0, safety_region_length=5.0)
 
-    x0 = np.array([0, 0, np.pi/4, 3.0, 0.0, 0])
-    xg = np.array([100, 100, 5*np.pi/4])
+    x0 = np.array([10, 10, np.pi/4, 3.0, 0.0, 0])
+    xg = np.array([140, 140, 5*np.pi/4])
     myvessel = Vessel(x0, xg, 0.05, 0.5, 1, [], True, 'viknes')
 
     myastar = AStar(x0, xg, mymap)
@@ -137,7 +137,8 @@ if __name__ == "__main__":
     myastar.update(myvessel)
 
     fig = plt.figure()
-    ax  = fig.add_subplot(111,autoscale_on=False)
+    ax  = fig.add_subplot(111, autoscale_on=False)
+
     ax.plot(myvessel.waypoints[:,0],
             myvessel.waypoints[:,1],
             '-')
@@ -149,15 +150,19 @@ if __name__ == "__main__":
     #nonpass = np.array(nonpassable)
     #ax.plot(nonpass[:,0], nonpass[:,1], 'rx')
 
-    ax.axis('equal')
     ax.axis('scaled')
-    ax.axis([-10, 160, -10, 160])
-    mymap.draw(ax, 'g', 'k')
-    ax.grid()
+    ax.set_xlim((-10, 160))
+    ax.set_ylim((-10, 160))
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
+    mymap.draw(ax)
+#    ax.grid()
+#    plt.tight_layout()
 
-    tikz_save('../../../latex/fig/testfig.tikz',
-              figureheight='8cm',
-              figurewidth='8cm')
+#    tikz_save('../../../latex/fig/'+"contour-hugging-astar-no-safety"+'.tikz',
+#              figureheight='1.5\\textwidth',
+#              figurewidth='1.5\\textwidth')
+    plt.show()
 
     #plt.show()
 

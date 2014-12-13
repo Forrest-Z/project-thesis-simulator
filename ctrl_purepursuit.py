@@ -49,6 +49,16 @@ class PurePursuit(Controller):
                 else:
                     vobj.u_d = 0.0
                     break
+            while vobj.world.is_occupied(self.cGoal[0], self.cGoal[1], t=0.1, R2=250.):
+                if self.cWP < self.nWP - self.iterator:
+                    self.cWP += self.iterator
+                    self.cGoal = self.wps[self.cWP]
+                else:
+                    # Final waypoint is infeasible. What do we do now?
+                    vobj.u_d = 0.0
+                    print "Final waypoint infeasible. Stopping..."
+                    break
+
             vobj.current_goal = np.copy(self.cGoal)
 
 

@@ -326,7 +326,7 @@ class Scenario(object):
         elif name == 's3-hybridastar':
             the_map = Map('', gridsize=1.0, safety_region_length=4.0)
 
-            self.tend = 80   # Simulation time (seconds)
+            self.tend = 300   # Simulation time (seconds)
             self.h    = 0.05 # Integrator time step
             self.dT   = 0.5  # Controller time step
             self.N    = int(np.around(self.tend / self.h)) + 1
@@ -337,10 +337,15 @@ class Scenario(object):
             x01 = np.array([100.0, 0.0, 3.14/4, 2.5, 0, 0])
             xg1 = np.array([80, 145, 3.14/2])
 
-            hastar = HybridAStar(x01,xg1,the_map, replan=True)
-            pp    = PurePursuit(R2=50, mode="waypoint")
+            hastar   = HybridAStar(x01, xg1, the_map)
+            pp       = PurePursuit(mode='goal-switcher')
+            myDynWnd = PotentialFields(the_map, N2)#DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
 
-            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp], is_main_vessel=True, vesseltype='viknes')
+            myDynWnd.alpha = .7
+            myDynWnd.beta  = .4
+            myDynWnd.gamma = .4
+
+            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp, myDynWnd], is_main_vessel=True, vesseltype='viknes')
             #v1.goal = np.array([140, 140, 0])
 
             # Follower
@@ -370,9 +375,9 @@ class Scenario(object):
             pp       = PurePursuit(mode='goal-switcher')
             myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
 
-            myDynWnd.alpha = 1.
-            myDynWnd.beta  = .2
-            myDynWnd.gamma = .3
+            myDynWnd.alpha = .7
+            myDynWnd.beta  = .4
+            myDynWnd.gamma = .4
 
             vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp, myDynWnd], is_main_vessel=True, vesseltype='viknes')
 
@@ -591,8 +596,8 @@ if __name__ == "__main__":
               fig.add_subplot(gs[1, 3], projection='3d')]
         #axarr[ii+1].set_aspect('equal')
 
-    scen = Scenario('s1-dynwnd')
-    #sim  = Simulation(scen, savedata=True)
+    scen = Scenario('hastar+dynwnd')
+    #sim  = Simulation(scen, savedata=False)
     sim  = Simulation(scen, fig, axarr)
 
     sim.run_sim()

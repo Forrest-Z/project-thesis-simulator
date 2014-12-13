@@ -44,7 +44,7 @@ class World(object):
                 return True
         return False
 
-    def is_occupied(self, x, y, t=0.):
+    def is_occupied(self, x, y, t=0., R2=100.):
         """Is the point (x,y) occupied at time t?"""
         if self._map.is_occupied_discrete((x,y)):
             return True
@@ -60,7 +60,7 @@ class World(object):
             xnext = xi[0] + ( np.cos(psi)*u ) * t
             ynext = xi[1] + ( np.sin(psi)*u ) * t
 
-            if (x - xnext)**2 + (y - ynext)**2 < 100:
+            if (x - xnext)**2 + (y - ynext)**2 < R2:
                 # Collision
                 return True
 

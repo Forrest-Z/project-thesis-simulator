@@ -39,17 +39,17 @@ class PotentialFields(Controller):
         self.xy = np.zeros([N,2])
         self.n = 0
 
-    def update(self, v_obj):
+    def update(self, vobj):
 
-        self.goal = v_obj.current_goal
+        self.goal = vobj.current_goal
 
 
         self.Fo = np.zeros(2)
         self.Fa = np.zeros(2)
         self.F  = np.zeros(2)
 
-        aligned_x = ( np.floor(v_obj.x[0] * self.map_res) + 0.5) / self.map_res
-        aligned_y = ( np.floor(v_obj.x[1] * self.map_res) + 0.5) / self.map_res
+        aligned_x = ( np.floor(vobj.x[0] * self.map_res) + 0.5) / self.map_res
+        aligned_y = ( np.floor(vobj.x[1] * self.map_res) + 0.5) / self.map_res
 
         xmin = aligned_x - self.d_max
         ymin = aligned_y - self.d_max
@@ -57,26 +57,26 @@ class PotentialFields(Controller):
         ymax = aligned_y + self.d_max
 
         # Calculate virtual force
-        self.get_virtual_force(v_obj.x, xmin, ymin, xmax, ymax, vobj)
+        self.get_virtual_force(vobj.x, xmin, ymin, xmax, ymax, vobj)
 
         # Apply force to boat
         self.F = self.Fo + self.Fa
-        v_obj.psi_d = np.arctan2(self.F[1], self.F[0])
-        #print "psi_d:", v_obj.psi_d
+        vobj.psi_d = np.arctan2(self.F[1], self.F[0])
+        #print "psi_d:", vobj.psi_d
 
-        cos_psi = np.cos(v_obj.x[2])
-        sin_psi = np.sin(v_obj.x[2])
+        cos_psi = np.cos(vobj.x[2])
+        sin_psi = np.sin(vobj.x[2])
 
-        v_obj.u_d = max(self.u_min,
-                        min(self.u_max,
-                            np.sqrt((self.F[0]*cos_psi**2 + self.F[1]*cos_psi*sin_psi)**2 + \
-                                    (self.F[1]*sin_psi**2 + self.F[0]*cos_psi*sin_psi)**2) ))
+        vobj.u_d = max(self.u_min,
+                       min(self.u_max,
+                           np.sqrt((self.F[0]*cos_psi**2 + self.F[1]*cos_psi*sin_psi)**2 + \
+                                   (self.F[1]*sin_psi**2 + self.F[0]*cos_psi*sin_psi)**2) ))
 
 
         self.Fn[self.n,0] = np.copy(self.F)
         self.Fn[self.n,1] = np.copy(self.Fo)
         self.Fn[self.n,2] = np.copy(self.Fa)
-        self.xy[self.n] = np.copy(v_obj.x[0:2])
+        self.xy[self.n] = np.copy(vobj.x[0:2])
         self.n += 1
 
     def get_virtual_force(self, xvec, xmin, ymin, xmax, ymax, vobj):
