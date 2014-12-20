@@ -57,7 +57,8 @@ class Simulation(object):
                 break
 
             if np.fmod(t,5.0) == 0:
-                print "Simulation time: %.3f" % t
+                pass
+                #print "Simulation time: %.3f" % t
 
             self.n += 1
 
@@ -65,6 +66,7 @@ class Simulation(object):
         #print "Total simulation CPU time: %.3f"%(time.clock() - tic)
         arr = self.scenario.world.get_simulation_data(self.n) + arr
 
+        print self.scenario.name
         print "Distance\tAvgVel\tVarVel\tVarPsi\tTime\tCPU Time"
         s = '\t'.join(format(x,".4f") for x in arr)
         print s

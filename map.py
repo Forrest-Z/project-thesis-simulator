@@ -51,19 +51,20 @@ class Map(object):
                                         (42.58, 19.27)], safety_region_length)]
 
         if maptype == 's3':
-            self._obstacles = [Polygon([(0, 30),
-                                        (50, 30),
-                                        (60, 40),
-                                        (60, 50),
-                                        (50, 60),
-                                        (0, 60)], safety_region_length),
-                               Polygon([(100, 0),
-                                        (100, 20),
-                                        (120, 40),
-                                        (120, 80),
-                                        (130, 90),
-                                        (160, 90),
-                                        (160, 0)], safety_region_length)]
+            pass
+            # self._obstacles = [Polygon([(0, 30),
+            #                             (50, 30),
+            #                             (60, 40),
+            #                             (60, 50),
+            #                             (50, 60),
+            #                             (0, 60)], safety_region_length),
+            #                    Polygon([(100, 0),
+            #                             (100, 20),
+            #                             (120, 40),
+            #                             (120, 80),
+            #                             (130, 90),
+            #                             (160, 90),
+            #                             (160, 0)], safety_region_length)]
 
 
         if maptype == 'islands':
@@ -83,10 +84,10 @@ class Map(object):
                                         (80.00, 90.00),
                                         (59.77, 94.64)],safety_region_length)]
         elif maptype == 'triangle':
-            self._dim = [20, 20]
-            self._obstacles = [Polygon([(1.5, 1.5),
-                                        (18.5, 3.5),
-                                        (10.7, 17.3)],safety_region_length)]
+            self._dim = [160, 160]
+            self._obstacles = [Polygon([(31.5, 51.5),
+                                        (90.5,60.5),
+                                        (70.7, 90.3)],safety_region_length)]
 
         elif maptype == 'polygon':
             self._obstacles = [Polygon([(30.76, 23.75),

@@ -145,7 +145,7 @@ class World(object):
 
     def visualize(self, fig, axarr, t, n):
 
-        if int(t*100)%int(8*0.5*100) == 0:
+        if int(t*100)%int(4*0.5*100) == 0:
             del axarr[0].collections[:]
             del axarr[0].lines[:]
             del axarr[0].patches[:]
@@ -162,7 +162,7 @@ class World(object):
 
             cmd = raw_input('Iteration: %d. Hit ENTER to continue... (s for save)'%n)
             if cmd == 's':
-                fig.savefig('simt-step-t-' + str(t) + '.pdf', dpi=600, format='pdf', bbox_inches='tight')
+                fig.savefig('sim-step-t-' + str(t) + '.pdf', dpi=600, format='pdf', bbox_inches='tight')
     def save(self, filename):
         """Save simulation to file."""
         # :TODO: implement

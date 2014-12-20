@@ -12,6 +12,8 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 
 import numpy as np
+from scipy.ndimage.filters import uniform_filter
+
 import copy
 
 from world import World
@@ -61,9 +63,9 @@ class DynamicWindow(Controller):
         self.pred_horiz = 20
         self.time_step  = 5.
         
-        self.alpha = .3#0.7
-        self.beta  = 1#0.2
-        self.gamma = 1#0.5
+        self.alpha = 0.7
+        self.beta  = 0.2
+        self.gamma = 0.5
 
         self.sigma = 0.0 # Low pass filter constant
 
@@ -168,6 +170,8 @@ class DynamicWindow(Controller):
                                         self.beta *self.scaled_dist_map + \
                                         self.gamma*self.velocity_map)
 
+        #uniform_filter(self.window, size=5, output=self.window, mode='nearest')
+
         # Find the best option
         n = np.argmax(self.window)
         uk_best = int(n / self.window_res[1])
@@ -199,7 +203,7 @@ class DynamicWindow(Controller):
 
         self.n += 1
         toc = time.clock()
-        print "Dynamic window: (%.2f, %.2f, %.2f) CPU time: %.3f" %(x,y,psi,toc-tic)
+        #print "Dynamic window: (%.2f, %.2f, %.2f) CPU time: %.3f" %(x,y,psi,toc-tic)
 
 
         #print r_range, self.rk_best
@@ -293,7 +297,6 @@ class DynamicWindow(Controller):
                     alpha = last_alpha
                     break
 
-                    # :TODO: FIKX ISDKFASDKFMASKDF
                 elif vobj.world.is_occupied(xk, yk, t):
                     # Intersection
                     break
@@ -387,8 +390,12 @@ class DynamicWindow(Controller):
                 x1 = x + u * np.cos(psi) * self.dT
                 y1 = y + u * np.sin(psi) * self.dT
 
-            self.psi_target = np.arctan2(vobj.current_goal[1] - y1,#self.current_arches[uk][rk][-1,1],
-                                         vobj.current_goal[0] - x1)#self.current_arches[uk][rk][-1,0])
+            if vobj.psi_d is not np.inf:
+                self.psi_target = vobj.psi_d
+            else:
+                self.psi_target = np.arctan2(vobj.current_goal[1] - y1,#self.current_arches[uk][rk][-1,1],
+                                             vobj.current_goal[0] - x1)#self.current_arches[uk][rk][-1,0])
+            vobj.psi_d = np.inf
 
             # If in reverse, heading is the opposite
             if u < 0:
@@ -407,6 +414,7 @@ class DynamicWindow(Controller):
             self.heading_map[uk, rk] = heading
             
     def draw(self, axes, n, fcolor='y', ecolor='k'):
+        return
         for ii in range(0, self.n, 8):
             axes.plot(self.best_arches[ii][:,0], self.best_arches[ii][:,1], 'r', alpha=0.5,
                       lw=2)

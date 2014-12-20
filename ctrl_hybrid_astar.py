@@ -39,7 +39,7 @@ class HybridAStar(Controller):
         if self.to_be_updated:
 
             vessel_object.waypoints = self.search(vessel_object)
-            vessel_object.controllers[1].is_initialized = False
+
             self.to_be_updated = False
             #self.map.disable_safety_region()
 

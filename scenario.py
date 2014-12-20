@@ -23,8 +23,92 @@ from ctrl_constant_bearing import ConstantBearing
 from matplotlib2tikz import save as tikz_save
 
 class Scenario(object):
-    def __init__(self, name='s1'):
-        self.name = name
+    def __init__(self, mapname, ctrlnames, scenname, name='s1'):
+
+        self.name = scenname + "-" + "-".join(ctrlnames)
+
+        self.tend = 150   # Simulation time (seconds)
+        self.h    = 0.05  # Integrator time step
+        self.dT   = 0.5   # Controller time step
+        self.N    = int(np.around(self.tend / self.h)) + 1
+        N2 = int(self.tend/self.dT) + 1
+
+        if scenname == "s1":
+            # Vessel 1 (Main vessel)
+            x01 = np.array([0.0, 0.0, 0.0, 2.5, 0, 0])
+            xg1 = np.array([140, 140, 0])
+
+        elif scenname == "s2":
+            # Vessel 1 (Main vessel)
+            x01 = np.array([0.0, 0.0, 0.0, 2.5, 0, 0])
+            xg1 = np.array([140, 140, 0])
+
+        elif scenname == "s3":
+            # Vessel 1 (Main vessel)
+            x01 = np.array([100.0, 0.0, 3.14/4, 2.5, 0, 0])
+            xg1 = np.array([80, 145, 3.14/2])
+
+            # Follower
+            x0f = np.array([120.,110,-np.pi,1.5,0,0])
+            xgf = np.array([250,110,0])
+            ppf  = PurePursuit(mode='pursuit')
+
+        else:
+            # Vessel 1 (Main vessel)
+            x01 = np.array([10.0, 10.0, 3.14/4, 2.5, 0, 0])
+            xg1 = np.array([100, 125, 3.14/2])
+
+
+        the_map = Map(mapname, gridsize=1., safety_region_length=4.0)
+
+        controllers = []
+
+        for name in ctrlnames:
+            if name == "dwa":
+                controllers.append(DynamicWindow(self.dT,
+                                                 N2,
+                                                 the_map))
+            elif name == "potfield":
+                controllers.append(PotentialFields(the_map, N2))
+                if len(controllers) > 1:
+                    controllers[-1].d_max = 20.
+
+            elif name == "astar":
+                controllers.append(AStar(x01, xg1, the_map))
+                controllers.append(LOSGuidance(switch_criterion="progress"))
+
+            elif name == "hastar":
+                controllers.append(HybridAStar(x01, xg1, the_map))
+                controllers.append(LOSGuidance(switch_criterion="progress"))
+
+        v0 = Vessel(x01,
+                    xg1,
+                    self.h,
+                    self.dT,
+                    self.N,
+                    controllers,
+                    is_main_vessel=True,
+                    vesseltype='viknes')
+
+        vessels = [v0]
+
+        if scenname == "s3":
+            ppf.cGoal = v0.x
+            vf = Vessel(x0f,
+                        xgf,
+                        self.h,
+                        self.dT,
+                        self.N,
+                        [ppf],
+                        is_main_vessel=False,
+                        vesseltype='viknes')
+            vf.u_d = 2.5
+            vessels.append(vf)
+
+        self.world = World(vessels, the_map)
+
+        return
+
 
         if name == 's1':
             the_map = Map('s1', gridsize=2.0, safety_region_length=4.0)
@@ -338,14 +422,17 @@ class Scenario(object):
             xg1 = np.array([80, 145, 3.14/2])
 
             hastar   = HybridAStar(x01, xg1, the_map)
-            pp       = PurePursuit(mode='goal-switcher')
-            myDynWnd = PotentialFields(the_map, N2)#DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
+            los      = LOSGuidance(switch_criterion="progress")
+            dwa      = DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
 
-            myDynWnd.alpha = .7
-            myDynWnd.beta  = .4
-            myDynWnd.gamma = .4
+            dwa.alpha = .5
+            dwa.beta  = .4
+            dwa.gamma = .4
 
-            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp, myDynWnd], is_main_vessel=True, vesseltype='viknes')
+            pot = PotentialFields(the_map, N2)
+            pot.d_max = 40
+
+            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, los, dwa], is_main_vessel=True, vesseltype='viknes')
             #v1.goal = np.array([140, 140, 0])
 
             # Follower
@@ -373,13 +460,14 @@ class Scenario(object):
 
             hastar   = HybridAStar(x01, xg1, the_map)
             pp       = PurePursuit(mode='goal-switcher')
+            los      = LOSGuidance(switch_criterion="progress")
             myDynWnd = DynamicWindow(self.dT, int(self.tend/self.dT) + 1, the_map)
 
-            myDynWnd.alpha = .7
+            myDynWnd.alpha = .5
             myDynWnd.beta  = .4
             myDynWnd.gamma = .4
 
-            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, pp, myDynWnd], is_main_vessel=True, vesseltype='viknes')
+            vobj = Vessel(x01, xg1, self.h, self.dT, self.N, [hastar, los, myDynWnd], is_main_vessel=True, vesseltype='viknes')
 
 
             xo0 = np.array([50.,130,5*np.pi/4,0.0,0,0])
@@ -541,70 +629,85 @@ def harry_plotter(sim):
     ax  = fig.add_subplot(111, autoscale_on=False)
 
     #ani = sim.animate(fig, ax)
-    sim.draw(ax)
-
     ax.axis('scaled')
     ax.set_xlim((-10, 160))
     ax.set_ylim((-10, 160))
-    ax.set_xlabel('x [m]')
-    ax.set_ylabel('y [m]')
+    ax.set_xlabel('East [m]')
+    ax.set_ylabel('North [m]')
 
-#    ax.grid()
-#    plt.tight_layout()
+    sim.draw(ax)
 
-    tikz_save('../../../latex/fig/'+scen.name+'.tikz',
+
+    #    ax.grid()
+    #    plt.tight_layout()
+
+    tikz_save('../../../latex/fig/astar-admissibility-2.tikz',
               figureheight='1.5\\textwidth',
               figurewidth='1.5\\textwidth')
     plt.show()
 
 def harry_anim(sim):
     fig2 = plt.figure()
-    ax2  = fig2.add_subplot(111, autoscale_on=False, )
+    ax2  = fig2.add_subplot(111, autoscale_on=False )
 
 
     ani = sim.animate(fig2,ax2)
     ax2.axis('scaled')
     ax2.set_xlim((-10, 160))
     ax2.set_ylim((-10, 160))
-    ax2.set_xlabel('x [m]')
-    ax2.set_ylabel('y [m]')
+    ax2.set_xlabel('East [m]')
+    ax2.set_ylabel('North [m]')
 
     ax2.grid()
 
     Writer = animation.writers['ffmpeg']
     writer = Writer(fps=33, metadata=dict(artist='Thomas Stenersen'), bitrate=1800)
-    ani.save('guided_dyn_wnd_2.mp4', writer=writer)
+    ani.save(sim.scenario.name+'.mp4', writer=writer)
     plt.show()
 
 if __name__ == "__main__":
-    plt.ion()
+    # plt.ion()
 
-    fig = plt.figure()
+    # fig = plt.figure()
 
-    gs    = gridspec.GridSpec(2,4)
-    axarr = [fig.add_subplot(gs[:,0:2], autoscale_on=False)]
+    # gs    = gridspec.GridSpec(2,4)
+    # axarr = [fig.add_subplot(gs[:,0:2], autoscale_on=False)]
 
-    axarr[0].axis('scaled')
-    axarr[0].set_xlim((-10, 160))
-    axarr[0].set_ylim((-10, 160))
-    axarr[0].set_xlabel('x [m]')
-    axarr[0].set_ylabel('y [m]')
+    # axarr[0].axis('scaled')
+    # axarr[0].set_xlim((-10, 160))
+    # axarr[0].set_ylim((-10, 160))
+    # axarr[0].set_xlabel('East [m]')
+    # axarr[0].set_ylabel('North [m]')
 
-    axarr += [fig.add_subplot(gs[0, 2], projection='3d'),
-              fig.add_subplot(gs[1, 2], projection='3d'),
-              fig.add_subplot(gs[0, 3], projection='3d'),
-              fig.add_subplot(gs[1, 3], projection='3d')]
-        #axarr[ii+1].set_aspect('equal')
+    # axarr += [fig.add_subplot(gs[0, 2], projection='3d'),
+    #           fig.add_subplot(gs[1, 2], projection='3d'),
+    #           fig.add_subplot(gs[0, 3], projection='3d'),
+    #           fig.add_subplot(gs[1, 3], projection='3d')]
+    #     #axarr[ii+1].set_aspect('equal')
 
-    scen = Scenario('hastar+dynwnd')
-    #sim  = Simulation(scen, savedata=False)
-    sim  = Simulation(scen, fig, axarr)
+    # for sname in ["s3"]:
+    #     for ctrl in ["potfield", "dwa", "astar", "hastar"]:
+    #         scen = Scenario(sname, [ctrl], sname)
+    #         sim  = Simulation(scen, savedata=False)
+    #         sim.run_sim()
+
+    #     for ctrl in ["astar", "hastar"]:
+    #         scen = Scenario(sname, [ctrl,'potfield'], sname)
+    #         sim  = Simulation(scen, savedata=False)
+    #         sim.run_sim()
+
+    #         scen = Scenario(sname, [ctrl,'dwa'], sname)
+    #         sim  = Simulation(scen, savedata=False)
+    #         sim.run_sim()
+    #sim  = Simulation(scen, fig, axarr)
+
+    scen = Scenario("s2", ["astar"], "s2")
+    sim  = Simulation(scen, savedata=False)
 
     sim.run_sim()
-
+    #plt.show()
+    harry_plotter(sim)
     plt.show()
-    #harry_plotter(sim)
-
 
 
 

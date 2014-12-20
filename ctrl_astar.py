@@ -74,7 +74,7 @@ class AStar(Controller):
         # dx2 = self.start[0] - self.goal[0]
         # dy2 = self.start[1] - self.goal[1]
         # cross = abs(dx1*dy2 - dx2*dy1)
-        return np.sqrt(dx*dx + dy*dy) #+ cross*0.001
+        return 20*np.sqrt(dx*dx + dy*dy) #+ cross*0.001
 
 class SearchGrid(object):
     """General purpose N-dimentional search grid."""

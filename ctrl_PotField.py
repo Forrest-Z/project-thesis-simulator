@@ -20,8 +20,8 @@ class PotentialFields(Controller):
     def __init__(self, the_map, N):
         self.goal   = None
 
-        self.mu = 300.
-        self.d_max = 70
+        self.mu = 250.
+        self.d_max = 60
         self.k = 40.
         self.xi = 0.4
         self.u_max = 3.0
