@@ -22,5 +22,4 @@ Implementation of the dynamic window approach (Fox, 1997).
 2. Matplotlib
 3. Dubins module `sudo pip install dubins`
 
-
-** NOTE: This is not fully operational at this moment. **
+** NOTE: There may be some kinks here and there. Start with `scenario.py` and work your way from there **
